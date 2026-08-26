@@ -26,6 +26,11 @@ variable "network_interface_id" {
   description = "Resource ID of the VM NIC."
   type        = string
 }
+variable "source_image_sku" {
+  description = "Canonical Ubuntu image SKU used by the service VM."
+  type        = string
+  default     = "22_04-lts-gen2"
+}
 variable "tags" {
   description = "Tags applied to the VM."
   type        = map(string)
