@@ -20,6 +20,10 @@ public class FakeCustomerRepository : ICustomerRepository
     public string? GetByIdId;
     public Customer? CustomerToReturn;
 
+    // GetAllAsync - defaults to an empty list, not null, so an unconfigured
+    // fake stands in for "no customers yet" rather than blowing up the caller.
+    public List<Customer> CustomersToReturn = new();
+
     // ActivePhoneExistsAsync
     public string? ActivePhoneExistsPhoneNormalized;
     public bool ActivePhoneExistsResult;
@@ -44,6 +48,11 @@ public class FakeCustomerRepository : ICustomerRepository
         GetByIdId = id;
 
         return Task.FromResult(CustomerToReturn);
+    }
+
+    public Task<List<Customer>> GetAllAsync()
+    {
+        return Task.FromResult(CustomersToReturn);
     }
 
     public Task<bool> ActivePhoneExistsAsync(string phoneNormalized)

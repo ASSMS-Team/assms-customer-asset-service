@@ -97,6 +97,7 @@ Base: `/api/customers` · `[Produces("application/json")]` on the controller.
 | Endpoint | Success | Failures |
 |---|---|---|
 | `POST /api/customers` | **201** + `Location` header | **400** validation, **409** duplicate phone |
+| `GET /api/customers` | **200** + array | — |
 | `GET /api/customers/{id}` | **200** | **404** |
 
 All errors are RFC 7807 `ValidationProblemDetails` with an `errors` object keyed by
@@ -109,6 +110,9 @@ phone input like any other field error — one code path handles both 400 and 40
 
 `GET` returns a customer regardless of status; the "active" qualifier applies only to
 the duplicate-phone rule, not to reads.
+
+The list endpoint was added by a later story — its ordering and empty-list behaviour are
+covered in [Customer List & Detail](customer-list-and-detail.md).
 
 Swagger UI: `/swagger` (Development only). XML summaries are enabled via
 `GenerateDocumentationFile` + `IncludeXmlComments`.
@@ -170,13 +174,13 @@ preceding sibling carries `is-invalid`.
 
 ## 7. Testing
 
-**18 unit tests, all passing.** `dotnet test` from the repo root.
+**20 unit tests, all passing.** `dotnet test` from the repo root.
 
 ```
 tests/CustomerAssetService.Tests/
 ├── UnitTests/
 │   ├── PhoneNormalizerTests.cs      13 tests
-│   └── CustomerServiceTests.cs       5 tests
+│   └── CustomerServiceTests.cs       7 tests
 ├── Fakes/
 │   └── FakeCustomerRepository.cs
 ├── IntegrationTests/                 (empty — QA)
@@ -186,7 +190,7 @@ tests/CustomerAssetService.Tests/
 > Test files must live **inside** the test project. A `.cs` file under the outer
 > `tests/` folder is not part of `CustomerAssetService.Tests.csproj` and will never run.
 
-### The five service tests
+### The service tests
 
 | Test | Asserts |
 |---|---|
@@ -195,6 +199,9 @@ tests/CustomerAssetService.Tests/
 | Active phone exists → fails without inserting | `DuplicatePhone`, **`CreateAsyncCallCount == 0`** |
 | GetById when exists → mapped response | all nine fields match |
 | GetById when missing → null | returns null |
+
+The other two tests in the same file cover the list endpoint and belong to a later
+story — see [Customer List & Detail](customer-list-and-detail.md).
 
 `FakeCustomerRepository` implements `ICustomerRepository` with fields controlling
 returns and recording arguments — no database, no mocking library. The third test's
@@ -286,5 +293,7 @@ Requires `appsettings.Development.json` (see `appsettings.Example.json`) and fro
 
 - [ ] Per-class coverage percentages — fill in from `docs/testing/coverage/index.html`
 - [ ] Confirm exact `ICustomerRepository` method signatures match section 5
-- [ ] Route path for the create-customer page (`AppRoutes.tsx`)
-- [ ] Whether `index.css` template styling stays or gets replaced
+- [x] Route path for the create-customer page (`AppRoutes.tsx`) — **`/customers/new`**
+- [x] Whether `index.css` template styling stays or gets replaced — **stays.** The app theme
+      lives in `src/styles/app.css`, imported after Bootstrap and `index.css` in `main.tsx`,
+      and overrides the template leftovers it needs to (root font size, the `#root` rules)
