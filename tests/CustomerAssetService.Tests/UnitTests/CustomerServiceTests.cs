@@ -135,6 +135,80 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task GetAllAsync_WhenCustomersExist_ReturnsMappedResponses()
+    {
+        // Arrange
+        var first = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "077-111-2222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Email = "nimal@example.com",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 11, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 11, 0, 0, DateTimeKind.Utc)
+        };
+        var second = new Customer
+        {
+            Id = "22222222-2222-2222-2222-222222222222",
+            Name = "Kamal Silva",
+            Phone = "0779998888",
+            PhoneNormalized = "0779998888",
+            Address = "48 Kandy Road, Kadawatha",
+            CustomerType = "BUSINESS",
+            Email = null,
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomersToReturn = new List<Customer> { first, second }
+        };
+        var service = new CustomerService(repository);
+
+        // Act
+        var responses = await service.GetAllAsync();
+
+        // Assert - the service maps without reordering; the newest-first order
+        // is the repository's ORDER BY, so it is preserved as handed over.
+        Assert.Equal(2, responses.Count);
+
+        Assert.Equal(first.Id, responses[0].Id);
+        Assert.Equal(first.Name, responses[0].Name);
+        Assert.Equal(first.Phone, responses[0].Phone);
+        Assert.Equal(first.Address, responses[0].Address);
+        Assert.Equal(first.CustomerType, responses[0].CustomerType);
+        Assert.Equal(first.Email, responses[0].Email);
+        Assert.Equal(first.Status, responses[0].Status);
+        Assert.Equal(first.CreatedAt, responses[0].CreatedAt);
+        Assert.Equal(first.UpdatedAt, responses[0].UpdatedAt);
+
+        Assert.Equal(second.Id, responses[1].Id);
+        Assert.Equal(second.Name, responses[1].Name);
+        Assert.Null(responses[1].Email);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WhenNoCustomers_ReturnsEmptyList()
+    {
+        // Arrange - CustomersToReturn is left at its empty default.
+        var repository = new FakeCustomerRepository();
+        var service = new CustomerService(repository);
+
+        // Act
+        var responses = await service.GetAllAsync();
+
+        // Assert - an empty list, never null: the controller returns 200 with
+        // an empty array rather than a 404 when nobody is registered.
+        Assert.NotNull(responses);
+        Assert.Empty(responses);
+    }
+
+    [Fact]
     public async Task GetByIdAsync_WhenCustomerMissing_ReturnsNull()
     {
         // Arrange - CustomerToReturn is left null, standing in for no such row.

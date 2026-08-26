@@ -53,6 +53,19 @@ public class CustomersController : ControllerBase
     }
 
     /// <summary>
+    /// Returns every registered customer, newest first.
+    /// </summary>
+    /// <response code="200">The customers. An empty list when none are registered - that is still a 200, not a 404.</response>
+    [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<CustomerResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll()
+    {
+        var customers = await _customerService.GetAllAsync();
+
+        return Ok(customers);
+    }
+
+    /// <summary>
     /// Returns a single customer by id, whatever its status.
     /// </summary>
     /// <param name="id">The server-generated customer id (a GUID string) returned when the customer was created.</param>

@@ -8,5 +8,7 @@ public interface ICustomerRepository
 
     Task<Customer?> GetByIdAsync(string id);
 
+    Task<List<Customer>> GetAllAsync();
+
     Task<bool> ActivePhoneExistsAsync(string phoneNormalized);
 }

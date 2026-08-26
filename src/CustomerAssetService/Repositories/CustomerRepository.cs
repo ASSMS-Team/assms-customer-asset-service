@@ -93,6 +93,68 @@ public class CustomerRepository : ICustomerRepository
         };
     }
 
+    public async Task<List<Customer>> GetAllAsync()
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        // The ORDER BY is not decoration: without one MySQL guarantees nothing
+        // about row order, so the same query can come back shuffled between
+        // requests. Newest first is what an Agent wants after registering someone.
+        // created_at is a second-precision TIMESTAMP, so two customers registered
+        // within the same second would tie and shuffle anyway - id breaks the tie
+        // and makes the order total.
+        command.CommandText = @"
+            SELECT id, name, phone, phone_normalized, phone_active_unique, address,
+                   customer_type, email, status, created_at, updated_at
+            FROM customers
+            ORDER BY created_at DESC, id;";
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        // Looked up by name so that reordering the SELECT list cannot silently
+        // shift the mapping, and once up front rather than once per row.
+        var idOrdinal = reader.GetOrdinal("id");
+        var nameOrdinal = reader.GetOrdinal("name");
+        var phoneOrdinal = reader.GetOrdinal("phone");
+        var phoneNormalizedOrdinal = reader.GetOrdinal("phone_normalized");
+        var phoneActiveUniqueOrdinal = reader.GetOrdinal("phone_active_unique");
+        var addressOrdinal = reader.GetOrdinal("address");
+        var customerTypeOrdinal = reader.GetOrdinal("customer_type");
+        var emailOrdinal = reader.GetOrdinal("email");
+        var statusOrdinal = reader.GetOrdinal("status");
+        var createdAtOrdinal = reader.GetOrdinal("created_at");
+        var updatedAtOrdinal = reader.GetOrdinal("updated_at");
+
+        var customers = new List<Customer>();
+
+        while (await reader.ReadAsync())
+        {
+            customers.Add(new Customer
+            {
+                // MySqlConnector reads CHAR(36) as a Guid by default (GuidFormat=Char36),
+                // so GetString throws on this column - go through the boxed value instead.
+                Id = reader.GetValue(idOrdinal)?.ToString() ?? string.Empty,
+                Name = reader.GetString(nameOrdinal),
+                Phone = reader.GetString(phoneOrdinal),
+                PhoneNormalized = reader.GetString(phoneNormalizedOrdinal),
+                // NULL for every customer that is not ACTIVE.
+                PhoneActiveUnique = reader.IsDBNull(phoneActiveUniqueOrdinal)
+                    ? null
+                    : reader.GetString(phoneActiveUniqueOrdinal),
+                Address = reader.GetString(addressOrdinal),
+                CustomerType = reader.GetString(customerTypeOrdinal),
+                Email = reader.IsDBNull(emailOrdinal) ? null : reader.GetString(emailOrdinal),
+                Status = reader.GetString(statusOrdinal),
+                CreatedAt = reader.GetDateTime(createdAtOrdinal),
+                UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
+            });
+        }
+
+        return customers;
+    }
+
     public async Task<bool> ActivePhoneExistsAsync(string phoneNormalized)
     {
         await using var connection = _connectionFactory.CreateConnection();

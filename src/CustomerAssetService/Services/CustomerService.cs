@@ -63,6 +63,13 @@ public class CustomerService
         return customer is null ? null : MapToResponse(customer);
     }
 
+    public async Task<List<CustomerResponse>> GetAllAsync()
+    {
+        var customers = await _repository.GetAllAsync();
+
+        return customers.Select(MapToResponse).ToList();
+    }
+
     private static CustomerResponse MapToResponse(Customer customer) => new()
     {
         Id = customer.Id,
