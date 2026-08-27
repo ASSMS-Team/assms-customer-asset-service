@@ -421,4 +421,89 @@ public class CustomerServiceTests
         Assert.Equal(1, repository.UpdateAsyncCallCount);
         Assert.Equal("48 Kandy Road, Kadawatha", repository.UpdatedCustomer!.Address);
     }
+    [Fact]
+    public async Task DeactivateAsync_WhenCustomerActive_MarksItInactive()
+    {
+        // Arrange
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Email = "nimal@example.com",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing
+        };
+        var service = new CustomerService(repository);
+
+        // Act
+        var result = await service.DeactivateAsync(existing.Id);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        Assert.Equal(1, repository.DeactivateAsyncCallCount);
+        Assert.Equal(existing.Id, repository.DeactivatedId);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_WhenCustomerMissing_ReturnsNotFoundWithoutWriting()
+    {
+        // Arrange - CustomerToReturn is left null, standing in for no such row.
+        var repository = new FakeCustomerRepository();
+        var service = new CustomerService(repository);
+
+        // Act
+        var result = await service.DeactivateAsync("00000000-0000-0000-0000-000000000000");
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.NotFound, result.Error);
+        Assert.Equal(0, repository.DeactivateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_WhenAlreadyInactive_SucceedsWithoutWriting()
+    {
+        // Arrange
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Kamal Silva",
+            Phone = "0779998888",
+            PhoneNormalized = "0779998888",
+            Address = "48 Kandy Road, Kadawatha",
+            CustomerType = "BUSINESS",
+            Status = "INACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing
+        };
+        var service = new CustomerService(repository);
+
+        // Act
+        var result = await service.DeactivateAsync(existing.Id);
+
+        // Assert - repeating the call is not an error, and the customer comes
+        // back as it stands.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        // The one that matters: no redundant write, so updated_at still reflects
+        // the deactivation itself rather than the last time somebody asked again.
+        Assert.Equal(0, repository.DeactivateAsyncCallCount);
+        Assert.Equal(existing.UpdatedAt, result.Value.UpdatedAt);
+    }
 }

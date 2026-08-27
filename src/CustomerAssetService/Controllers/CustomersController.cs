@@ -107,6 +107,31 @@ public class CustomersController : ControllerBase
     }
 
     /// <summary>
+    /// Deactivates a customer. The record is kept and only its status changes to
+    /// INACTIVE, which also releases its phone number for a new active customer.
+    /// Deactivating a customer that is already inactive is not an error: the call
+    /// succeeds and returns the customer unchanged, without writing to it, so
+    /// repeating it leaves the record and its last-updated time exactly as they were.
+    /// </summary>
+    /// <param name="id">The server-generated customer id (a GUID string) of the customer to deactivate.</param>
+    /// <response code="200">The customer as it now stands, with status INACTIVE. Returned whether this call deactivated it or it was already inactive.</response>
+    /// <response code="404">No customer exists with this id.</response>
+    [HttpPost("{id}/deactivate")]
+    [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Deactivate(string id)
+    {
+        var result = await _customerService.DeactivateAsync(id);
+
+        if (result.Error == ServiceError.NotFound)
+        {
+            return NotFound();
+        }
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
     /// Returns every registered customer, newest first.
     /// </summary>
     /// <response code="200">The customers. An empty list when none are registered - that is still a 200, not a 404.</response>

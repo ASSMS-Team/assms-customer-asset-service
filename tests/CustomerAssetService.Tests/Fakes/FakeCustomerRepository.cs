@@ -28,6 +28,10 @@ public class FakeCustomerRepository : ICustomerRepository
     public Customer? UpdatedCustomer;
     public int UpdateAsyncCallCount;
 
+    // DeactivateAsync
+    public string? DeactivatedId;
+    public int DeactivateAsyncCallCount;
+
     // ActivePhoneExistsAsync
     public string? ActivePhoneExistsPhoneNormalized;
     // Null when the caller passed no id to exclude, which is how a test tells
@@ -71,6 +75,22 @@ public class FakeCustomerRepository : ICustomerRepository
         if (ExceptionToThrow is not null)
         {
             throw ExceptionToThrow;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeactivateAsync(string id)
+    {
+        DeactivatedId = id;
+        DeactivateAsyncCallCount++;
+
+        // The real UPDATE changes the row, so the service's read-back sees the
+        // new status; the fake would otherwise hand the same ACTIVE customer
+        // straight back and hide that.
+        if (CustomerToReturn is not null && CustomerToReturn.Id == id)
+        {
+            CustomerToReturn.Status = "INACTIVE";
         }
 
         return Task.CompletedTask;

@@ -113,6 +113,32 @@ public class CustomerService
         return Result<CustomerResponse>.Success(MapToResponse(updated));
     }
 
+    public async Task<Result<CustomerResponse>> DeactivateAsync(string id)
+    {
+        var existing = await _repository.GetByIdAsync(id);
+
+        if (existing is null)
+        {
+            return Result<CustomerResponse>.Failure(ServiceError.NotFound);
+        }
+
+        // Deactivating an already-inactive customer is the same answer as
+        // deactivating an active one, so it succeeds - but without a write.
+        // Writing redundantly would move updated_at and make a no-op look like
+        // a modification.
+        if (existing.Status != "ACTIVE")
+        {
+            return Result<CustomerResponse>.Success(MapToResponse(existing));
+        }
+
+        await _repository.DeactivateAsync(id);
+
+        // Read back so status and updated_at are the values the database holds.
+        var deactivated = await _repository.GetByIdAsync(id) ?? existing;
+
+        return Result<CustomerResponse>.Success(MapToResponse(deactivated));
+    }
+
     public async Task<CustomerResponse?> GetByIdAsync(string id)
     {
         var customer = await _repository.GetByIdAsync(id);
