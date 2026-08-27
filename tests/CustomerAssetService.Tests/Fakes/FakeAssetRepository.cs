@@ -22,6 +22,14 @@ public class FakeAssetRepository : IAssetRepository
     public string? GetByIdId;
     public Asset? AssetToReturn;
 
+    // GetByCustomerIdAsync - defaults to an empty list, not null, so an
+    // unconfigured fake stands in for "this customer owns nothing yet" rather
+    // than blowing up the caller.
+    public List<Asset> AssetsToReturn = new();
+    // The customer id the list was asked for, so a test can check the service
+    // passed the route's id through rather than looking something else up.
+    public string? GetByCustomerIdCustomerId;
+
     // SerialExistsAsync
     public string? SerialExistsSerialNormalized;
     public int SerialExistsAsyncCallCount;
@@ -47,6 +55,13 @@ public class FakeAssetRepository : IAssetRepository
         GetByIdId = id;
 
         return Task.FromResult(AssetToReturn);
+    }
+
+    public Task<List<Asset>> GetByCustomerIdAsync(string customerId)
+    {
+        GetByCustomerIdCustomerId = customerId;
+
+        return Task.FromResult(AssetsToReturn);
     }
 
     public Task<bool> SerialExistsAsync(string serialNormalized)

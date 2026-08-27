@@ -267,4 +267,102 @@ public class AssetServiceTests
         Assert.Null(response);
         Assert.Equal("22222222-2222-2222-2222-222222222222", assets.GetByIdId);
     }
+
+    [Fact]
+    public async Task GetByCustomerIdAsync_WhenCustomerHasAssets_ReturnsMappedResponses()
+    {
+        // Arrange
+        var first = new Asset
+        {
+            Id = "22222222-2222-2222-2222-222222222222",
+            CustomerId = CustomerId,
+            AssetType = "REFRIGERATOR",
+            Model = "FrostFree 300",
+            SerialNumber = "XYZ-999",
+            SerialNormalized = "XYZ999",
+            InstallationDate = new DateOnly(2023, 1, 15),
+            Location = "Kitchen",
+            Notes = null,
+            CreatedAt = new DateTime(2026, 8, 26, 11, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 11, 0, 0, DateTimeKind.Utc),
+        };
+        var second = new Asset
+        {
+            Id = "33333333-3333-3333-3333-333333333333",
+            CustomerId = CustomerId,
+            AssetType = "AIR_CONDITIONER",
+            Model = "CoolMax 12",
+            SerialNumber = "ABC-123",
+            SerialNormalized = "ABC123",
+            InstallationDate = new DateOnly(2024, 6, 1),
+            Location = "Living room",
+            Notes = "fitted upstairs",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+        };
+
+        var assets = new FakeAssetRepository { AssetsToReturn = new List<Asset> { first, second } };
+        var customers = new FakeCustomerRepository { CustomerToReturn = ActiveCustomer() };
+        var service = new AssetService(assets, customers);
+
+        // Act
+        var result = await service.GetByCustomerIdAsync(CustomerId);
+
+        // Assert - the repository's order is kept as it came, and the id asked
+        // for is the one the caller passed in.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CustomerId, assets.GetByCustomerIdCustomerId);
+        Assert.Equal(2, result.Value!.Count);
+
+        Assert.Equal(first.Id, result.Value[0].Id);
+        Assert.Equal(first.CustomerId, result.Value[0].CustomerId);
+        Assert.Equal(first.AssetType, result.Value[0].AssetType);
+        Assert.Equal(first.Model, result.Value[0].Model);
+        Assert.Equal(first.SerialNumber, result.Value[0].SerialNumber);
+        Assert.Equal(first.InstallationDate, result.Value[0].InstallationDate);
+        Assert.Equal(first.Location, result.Value[0].Location);
+        Assert.Null(result.Value[0].Notes);
+        Assert.Equal(first.CreatedAt, result.Value[0].CreatedAt);
+        Assert.Equal(first.UpdatedAt, result.Value[0].UpdatedAt);
+
+        Assert.Equal(second.Id, result.Value[1].Id);
+        Assert.Equal(second.SerialNumber, result.Value[1].SerialNumber);
+        Assert.Equal(second.Notes, result.Value[1].Notes);
+    }
+
+    [Fact]
+    public async Task GetByCustomerIdAsync_WhenCustomerMissing_ReturnsCustomerNotFound()
+    {
+        // Arrange - CustomerToReturn is left null, standing in for no such customer.
+        var assets = new FakeAssetRepository();
+        var customers = new FakeCustomerRepository();
+        var service = new AssetService(assets, customers);
+
+        // Act
+        var result = await service.GetByCustomerIdAsync(CustomerId);
+
+        // Assert - the customer is checked first, so the asset list is never
+        // asked for and the controller has a missing customer to turn into a 404.
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.CustomerNotFound, result.Error);
+        Assert.Null(assets.GetByCustomerIdCustomerId);
+    }
+
+    [Fact]
+    public async Task GetByCustomerIdAsync_WhenCustomerHasNoAssets_ReturnsEmptyList()
+    {
+        // Arrange - AssetsToReturn is left at its empty default.
+        var assets = new FakeAssetRepository();
+        var customers = new FakeCustomerRepository { CustomerToReturn = ActiveCustomer() };
+        var service = new AssetService(assets, customers);
+
+        // Act
+        var result = await service.GetByCustomerIdAsync(CustomerId);
+
+        // Assert - an empty list, never null: the controller returns 200 with an
+        // empty array rather than a 404 when the customer owns nothing.
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value);
+        Assert.Empty(result.Value);
+    }
 }

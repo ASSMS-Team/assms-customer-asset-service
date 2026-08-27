@@ -12,10 +12,15 @@ namespace CustomerAssetService.Controllers;
 public class CustomersController : ControllerBase
 {
     private readonly CustomerService _customerService;
+    // A customer's assets are addressed under the customer, so the route lives
+    // here - but listing them is still the asset service's job, hence the
+    // second dependency rather than a copy of that logic on this side.
+    private readonly AssetService _assetService;
 
-    public CustomersController(CustomerService customerService)
+    public CustomersController(CustomerService customerService, AssetService assetService)
     {
         _customerService = customerService;
+        _assetService = assetService;
     }
 
     // [ApiController] returns 400 with ValidationProblemDetails before this runs,
@@ -156,6 +161,30 @@ public class CustomersController : ControllerBase
         var customers = await _customerService.GetAllAsync(status);
 
         return Ok(customers);
+    }
+
+    /// <summary>
+    /// Returns every asset registered against a customer, newest first. The
+    /// customer's own status does not narrow the list: a deactivated customer
+    /// can take no new equipment, but the equipment it already has is history
+    /// that stays viewable.
+    /// </summary>
+    /// <param name="customerId">The server-generated customer id (a GUID string) whose assets to list.</param>
+    /// <response code="200">The customer's assets. An empty list when the customer has none - that is still a 200, not a 404.</response>
+    /// <response code="404">No customer exists with this id. Unlike the create path's 409, the customer here is the addressed resource, so a missing one is a 404.</response>
+    [HttpGet("{customerId}/assets")]
+    [ProducesResponseType(typeof(IEnumerable<AssetResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAssets(string customerId)
+    {
+        var result = await _assetService.GetByCustomerIdAsync(customerId);
+
+        if (result.Error == ServiceError.CustomerNotFound)
+        {
+            return NotFound();
+        }
+
+        return Ok(result.Value);
     }
 
     /// <summary>
