@@ -86,6 +86,23 @@ public class AssetService
         return asset is null ? null : MapToResponse(asset);
     }
 
+    public async Task<Result<List<AssetResponse>>> GetByCustomerIdAsync(string customerId)
+    {
+        var customer = await _customerRepository.GetByIdAsync(customerId);
+
+        if (customer is null)
+        {
+            return Result<List<AssetResponse>>.Failure(ServiceError.CustomerNotFound);
+        }
+
+        // No status check here, unlike the create path: a deactivated customer
+        // can take no new equipment, but the equipment it already has is history
+        // that should still be viewable.
+        var assets = await _repository.GetByCustomerIdAsync(customerId);
+
+        return Result<List<AssetResponse>>.Success(assets.Select(MapToResponse).ToList());
+    }
+
     private static AssetResponse MapToResponse(Asset asset) => new()
     {
         Id = asset.Id,
