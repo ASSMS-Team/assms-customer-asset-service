@@ -221,4 +221,204 @@ public class CustomerServiceTests
         // Assert - a missing customer is an expected outcome, not an exception.
         Assert.Null(response);
     }
+    [Fact]
+    public async Task UpdateAsync_WithValidRequest_ChangesEditableFieldsOnly()
+    {
+        // Arrange - an ACTIVE customer to edit, and no clash on the new number.
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Email = "nimal@example.com",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing
+        };
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            Name = "Nimal J. Perera",
+            Phone = "077-999-8888",
+            Address = "48 Kandy Road, Kadawatha",
+            CustomerType = "BUSINESS",
+            Email = "nimal.perera@example.com"
+        };
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal(1, repository.UpdateAsyncCallCount);
+
+        var updated = repository.UpdatedCustomer;
+        Assert.NotNull(updated);
+        Assert.Equal(request.Name, updated!.Name);
+        // Phone is stored as typed, alongside the normalized form.
+        Assert.Equal("077-999-8888", updated.Phone);
+        Assert.Equal("0779998888", updated.PhoneNormalized);
+        Assert.Equal(request.Address, updated.Address);
+        Assert.Equal(request.CustomerType, updated.CustomerType);
+        Assert.Equal(request.Email, updated.Email);
+        // The three the request may not touch are carried over unchanged.
+        Assert.Equal(existing.Id, updated.Id);
+        Assert.Equal(existing.Status, updated.Status);
+        Assert.Equal(existing.CreatedAt, updated.CreatedAt);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCustomerMissing_ReturnsNotFoundWithoutUpdating()
+    {
+        // Arrange - CustomerToReturn is left null, standing in for no such row.
+        var repository = new FakeCustomerRepository();
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.UpdateAsync("00000000-0000-0000-0000-000000000000", request);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.NotFound, result.Error);
+        Assert.Equal(0, repository.UpdateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenCustomerNotActive_ReturnsCustomerInactiveWithoutUpdating()
+    {
+        // Arrange
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Status = "INACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing
+        };
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            Name = "Nimal J. Perera",
+            Phone = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert - a deactivated customer is history; editing it is refused
+        // before anything is written.
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.CustomerInactive, result.Error);
+        Assert.Equal(0, repository.UpdateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenAnotherActiveCustomerHasPhone_FailsWithoutUpdating()
+    {
+        // Arrange - the new number is held by somebody else, so the pre-check hits.
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing,
+            ActivePhoneExistsResult = true
+        };
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            Name = "Nimal Perera",
+            Phone = "0779998888",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.DuplicatePhone, result.Error);
+        // The pre-check short-circuits, so the update is never attempted.
+        Assert.Equal(0, repository.UpdateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenPhoneUnchanged_ExcludesOwnRowAndSucceeds()
+    {
+        // Arrange - a clash is configured, so without the exclusion the customer
+        // would be rejected for holding the number it already holds.
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing,
+            ActivePhoneExistsResult = true
+        };
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            // Only the address changes; the number is the same one, retyped.
+            Name = "Nimal Perera",
+            Phone = "077-111-2222",
+            Address = "48 Kandy Road, Kadawatha",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert - this is the one that matters: the customer's own id reaches
+        // the repository as the row to exclude, so it does not clash with itself.
+        Assert.Equal(existing.Id, repository.ActivePhoneExistsExcludeCustomerId);
+        Assert.Equal("0771112222", repository.ActivePhoneExistsPhoneNormalized);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal(1, repository.UpdateAsyncCallCount);
+        Assert.Equal("48 Kandy Road, Kadawatha", repository.UpdatedCustomer!.Address);
+    }
 }

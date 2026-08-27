@@ -155,19 +155,64 @@ public class CustomerRepository : ICustomerRepository
         return customers;
     }
 
-    public async Task<bool> ActivePhoneExistsAsync(string phoneNormalized)
+    // status is not in the SET list: activating or deactivating a customer is a
+    // separate operation. created_at never changes, and updated_at is maintained
+    // by the column's ON UPDATE default.
+    public async Task UpdateAsync(Customer customer)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = @"
+            UPDATE customers
+            SET name = @name,
+                phone = @phone,
+                phone_normalized = @phoneNormalized,
+                address = @address,
+                customer_type = @customerType,
+                email = @email
+            WHERE id = @id;";
+
+        command.Parameters.AddWithValue("@name", customer.Name);
+        command.Parameters.AddWithValue("@phone", customer.Phone);
+        command.Parameters.AddWithValue("@phoneNormalized", customer.PhoneNormalized);
+        command.Parameters.AddWithValue("@address", customer.Address);
+        command.Parameters.AddWithValue("@customerType", customer.CustomerType);
+        command.Parameters.AddWithValue("@email", (object?)customer.Email ?? DBNull.Value);
+        command.Parameters.AddWithValue("@id", customer.Id);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<bool> ActivePhoneExistsAsync(string phoneNormalized, string? excludeCustomerId = null)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+
+        // The exclusion clause is only in the SQL when there is an id to exclude,
+        // so the create path runs exactly the query it ran before.
+        var sql = @"
             SELECT 1
             FROM customers
-            WHERE phone_normalized = @phoneNormalized AND status = 'ACTIVE'
+            WHERE phone_normalized = @phoneNormalized AND status = 'ACTIVE'";
+
+        if (excludeCustomerId is not null)
+        {
+            sql += " AND id != @excludeId";
+        }
+
+        command.CommandText = sql + @"
             LIMIT 1;";
 
         command.Parameters.AddWithValue("@phoneNormalized", phoneNormalized);
+
+        if (excludeCustomerId is not null)
+        {
+            command.Parameters.AddWithValue("@excludeId", excludeCustomerId);
+        }
 
         var result = await command.ExecuteScalarAsync();
 

@@ -3,7 +3,9 @@ namespace CustomerAssetService.Services;
 public enum ServiceError
 {
     None = 0,
-    DuplicatePhone = 1
+    DuplicatePhone = 1,
+    NotFound = 2,
+    CustomerInactive = 3
 }
 
 // Expected failures are returned, not thrown, so the controller's branching is

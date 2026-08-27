@@ -10,5 +10,10 @@ public interface ICustomerRepository
 
     Task<List<Customer>> GetAllAsync();
 
-    Task<bool> ActivePhoneExistsAsync(string phoneNormalized);
+    Task UpdateAsync(Customer customer);
+
+    // excludeCustomerId is optional so the create path can keep calling this with
+    // one argument; the update path passes the customer being edited so its own
+    // row does not count as a clash with itself.
+    Task<bool> ActivePhoneExistsAsync(string phoneNormalized, string? excludeCustomerId = null);
 }
