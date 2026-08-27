@@ -24,8 +24,15 @@ public class FakeCustomerRepository : ICustomerRepository
     // fake stands in for "no customers yet" rather than blowing up the caller.
     public List<Customer> CustomersToReturn = new();
 
+    // UpdateAsync
+    public Customer? UpdatedCustomer;
+    public int UpdateAsyncCallCount;
+
     // ActivePhoneExistsAsync
     public string? ActivePhoneExistsPhoneNormalized;
+    // Null when the caller passed no id to exclude, which is how a test tells
+    // the create path's call apart from the update path's.
+    public string? ActivePhoneExistsExcludeCustomerId;
     public bool ActivePhoneExistsResult;
 
     public Task CreateAsync(Customer customer)
@@ -55,9 +62,34 @@ public class FakeCustomerRepository : ICustomerRepository
         return Task.FromResult(CustomersToReturn);
     }
 
-    public Task<bool> ActivePhoneExistsAsync(string phoneNormalized)
+    public Task UpdateAsync(Customer customer)
+    {
+        // Recorded and counted before the throw, for the same reason as CreateAsync.
+        UpdatedCustomer = customer;
+        UpdateAsyncCallCount++;
+
+        if (ExceptionToThrow is not null)
+        {
+            throw ExceptionToThrow;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> ActivePhoneExistsAsync(string phoneNormalized, string? excludeCustomerId = null)
     {
         ActivePhoneExistsPhoneNormalized = phoneNormalized;
+        ActivePhoneExistsExcludeCustomerId = excludeCustomerId;
+
+        // Stands in for the WHERE id != @excludeId: the excluded row is out of
+        // the query, so a customer still holding its own number finds no clash
+        // even when a clash was configured. Any other number still clashes.
+        if (excludeCustomerId is not null
+            && excludeCustomerId == CustomerToReturn?.Id
+            && phoneNormalized == CustomerToReturn.PhoneNormalized)
+        {
+            return Task.FromResult(false);
+        }
 
         return Task.FromResult(ActivePhoneExistsResult);
     }
