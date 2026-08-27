@@ -32,6 +32,33 @@ public class AssetServiceTests
         Notes = "fitted upstairs",
     };
 
+    private const string AssetId = "22222222-2222-2222-2222-222222222222";
+
+    private static Asset ExistingAsset() => new()
+    {
+        Id = AssetId,
+        CustomerId = CustomerId,
+        AssetType = "AIR_CONDITIONER",
+        Model = "CoolMax 12",
+        SerialNumber = "ABC-123",
+        SerialNormalized = "ABC123",
+        InstallationDate = new DateOnly(2024, 6, 1),
+        Location = "Living room",
+        Notes = "fitted upstairs",
+        CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+        UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+    };
+
+    private static UpdateAssetRequest ValidUpdateRequest() => new()
+    {
+        AssetType = "REFRIGERATOR",
+        Model = "FrostFree 300",
+        SerialNumber = "XYZ-999",
+        InstallationDate = new DateOnly(2023, 1, 15),
+        Location = "Kitchen",
+        Notes = "moved downstairs",
+    };
+
     [Fact]
     public async Task CreateAsync_WithValidRequest_CreatesAsset()
     {
@@ -364,5 +391,139 @@ public class AssetServiceTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
         Assert.Empty(result.Value);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithValidRequest_ChangesEditableFieldsOnly()
+    {
+        // Arrange - an asset to edit, and no clash on the new serial.
+        var existing = ExistingAsset();
+        var assets = new FakeAssetRepository { AssetToReturn = existing };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+        var request = ValidUpdateRequest();
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal(1, assets.UpdateAsyncCallCount);
+
+        var updated = assets.UpdatedAsset;
+        Assert.NotNull(updated);
+        Assert.Equal(request.AssetType, updated!.AssetType);
+        Assert.Equal(request.Model, updated.Model);
+        // The serial is stored as typed, alongside the normalized form.
+        Assert.Equal("XYZ-999", updated.SerialNumber);
+        Assert.Equal("XYZ999", updated.SerialNormalized);
+        Assert.Equal(request.InstallationDate, updated.InstallationDate);
+        Assert.Equal(request.Location, updated.Location);
+        Assert.Equal(request.Notes, updated.Notes);
+        // The three the request may not touch are carried over unchanged - an
+        // asset does not change hands, and its creation time is history.
+        Assert.Equal(existing.Id, updated.Id);
+        Assert.Equal(existing.CustomerId, updated.CustomerId);
+        Assert.Equal(existing.CreatedAt, updated.CreatedAt);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenAssetMissing_ReturnsNotFoundWithoutUpdating()
+    {
+        // Arrange - AssetToReturn is left null, standing in for no such row.
+        var assets = new FakeAssetRepository();
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.UpdateAsync("00000000-0000-0000-0000-000000000000", ValidUpdateRequest());
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.NotFound, result.Error);
+        Assert.Equal(0, assets.UpdateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenAnotherAssetHasSerial_FailsWithoutUpdating()
+    {
+        // Arrange - the new serial is held by another asset, so the pre-check
+        // hits: the exclusion only takes this asset's own row out of the query.
+        var existing = ExistingAsset();
+        var assets = new FakeAssetRepository
+        {
+            AssetToReturn = existing,
+            SerialExistsResult = true,
+        };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, ValidUpdateRequest());
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.DuplicateSerial, result.Error);
+        // The pre-check short-circuits, so the update is never attempted.
+        Assert.Equal(0, assets.UpdateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenSerialUnchanged_ExcludesOwnRowAndSucceeds()
+    {
+        // Arrange - a clash is configured, so without the exclusion the asset
+        // would be rejected for holding the serial it already holds.
+        var existing = ExistingAsset();
+        var assets = new FakeAssetRepository
+        {
+            AssetToReturn = existing,
+            SerialExistsResult = true,
+        };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+        var request = ValidUpdateRequest();
+        // Only the location changes; the serial is the same one, retyped.
+        request.AssetType = existing.AssetType;
+        request.Model = existing.Model;
+        request.SerialNumber = "abc 123";
+        request.InstallationDate = existing.InstallationDate;
+        request.Location = "Bedroom";
+        request.Notes = existing.Notes;
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert - this is the one that matters: the asset's own id reaches the
+        // repository as the row to exclude, so it does not clash with itself.
+        Assert.Equal(existing.Id, assets.SerialExistsExcludeAssetId);
+        Assert.Equal("ABC123", assets.SerialExistsSerialNormalized);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal(1, assets.UpdateAsyncCallCount);
+        Assert.Equal("Bedroom", assets.UpdatedAsset!.Location);
+        // Stored as typed even when only the punctuation changed.
+        Assert.Equal("abc 123", assets.UpdatedAsset.SerialNumber);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenUniqueIndexRejectsTheUpdate_ReturnsDuplicateSerial()
+    {
+        // Arrange - the same race on the update path: the pre-check clears and
+        // the unique index is what settles it once the write lands.
+        var existing = ExistingAsset();
+        var assets = new FakeAssetRepository
+        {
+            AssetToReturn = existing,
+            SerialExistsResult = false,
+            ExceptionToThrow = MySqlExceptions.DuplicateKey(
+                "Duplicate entry 'XYZ999' for key 'uq_assets_serial_normalized'"),
+        };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, ValidUpdateRequest());
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.DuplicateSerial, result.Error);
+        // Unlike the pre-check case above, the update was attempted.
+        Assert.Equal(1, assets.UpdateAsyncCallCount);
     }
 }

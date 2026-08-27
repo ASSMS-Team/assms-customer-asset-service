@@ -163,19 +163,68 @@ public class AssetRepository : IAssetRepository
         return assets;
     }
 
-    public async Task<bool> SerialExistsAsync(string serialNormalized)
+    // customer_id is not in the SET list: an asset does not change hands, and
+    // moving one would rewrite whose equipment history it belongs to. created_at
+    // never changes, and updated_at is maintained by the column's ON UPDATE default.
+    public async Task UpdateAsync(Asset asset)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = @"
+            UPDATE assets
+            SET asset_type = @assetType,
+                model = @model,
+                serial_number = @serialNumber,
+                serial_normalized = @serialNormalized,
+                installation_date = @installationDate,
+                location = @location,
+                notes = @notes
+            WHERE id = @id;";
+
+        command.Parameters.AddWithValue("@assetType", asset.AssetType);
+        command.Parameters.AddWithValue("@model", asset.Model);
+        command.Parameters.AddWithValue("@serialNumber", asset.SerialNumber);
+        command.Parameters.AddWithValue("@serialNormalized", asset.SerialNormalized);
+        // MySqlConnector takes a DateOnly parameter as-is against a DATE column -
+        // no conversion to DateTime is needed on the way in.
+        command.Parameters.AddWithValue("@installationDate", asset.InstallationDate);
+        command.Parameters.AddWithValue("@location", asset.Location);
+        command.Parameters.AddWithValue("@notes", (object?)asset.Notes ?? DBNull.Value);
+        command.Parameters.AddWithValue("@id", asset.Id);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<bool> SerialExistsAsync(string serialNormalized, string? excludeAssetId = null)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+
+        // The exclusion clause is only in the SQL when there is an id to exclude,
+        // so the create path runs exactly the query it ran before.
+        var sql = @"
             SELECT 1
             FROM assets
-            WHERE serial_normalized = @serialNormalized
+            WHERE serial_normalized = @serialNormalized";
+
+        if (excludeAssetId is not null)
+        {
+            sql += " AND id != @excludeId";
+        }
+
+        command.CommandText = sql + @"
             LIMIT 1;";
 
         command.Parameters.AddWithValue("@serialNormalized", serialNormalized);
+
+        if (excludeAssetId is not null)
+        {
+            command.Parameters.AddWithValue("@excludeId", excludeAssetId);
+        }
 
         var result = await command.ExecuteScalarAsync();
 
