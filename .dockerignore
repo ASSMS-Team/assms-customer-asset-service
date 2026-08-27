@@ -1,2 +1,36 @@
-# Placeholder
+# Build output and test artifacts
+**/bin/
+**/obj/
+TestResults/
+coverage/
 
+# Source control and IDE files
+.git/
+.github/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local configuration and secrets
+.env*
+!.env.example
+*.pem
+*.key
+
+# Terraform local state and plans
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+backend.hcl
+
+# OS and editor noise
+*.swp
+*.tmp
+*.log
+Thumbs.db
+.DS_Store
