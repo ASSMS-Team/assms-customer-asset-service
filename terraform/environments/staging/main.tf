@@ -88,5 +88,6 @@ module "vm" {
   admin_username       = var.admin_username
   ssh_public_key       = var.ssh_public_key
   network_interface_id = module.nic.id
+  source_image_sku     = var.source_image_sku
   tags                 = var.tags
 }
