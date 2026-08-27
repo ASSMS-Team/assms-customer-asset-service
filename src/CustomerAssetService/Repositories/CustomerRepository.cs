@@ -185,6 +185,25 @@ public class CustomerRepository : ICustomerRepository
         await command.ExecuteNonQueryAsync();
     }
 
+    // Status is the only column written. updated_at maintains itself, and
+    // phone_active_unique is generated - it drops to NULL on its own once the
+    // row stops being ACTIVE, which is what frees the number for reuse.
+    public async Task DeactivateAsync(string id)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            UPDATE customers
+            SET status = 'INACTIVE'
+            WHERE id = @id;";
+
+        command.Parameters.AddWithValue("@id", id);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
     public async Task<bool> ActivePhoneExistsAsync(string phoneNormalized, string? excludeCustomerId = null)
     {
         await using var connection = _connectionFactory.CreateConnection();

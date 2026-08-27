@@ -27,7 +27,7 @@ React form  →  POST /api/customers  →  CustomerService  →  CustomerReposit
 | Data access | `Repositories/ICustomerRepository.cs`, `Repositories/CustomerRepository.cs` |
 | Business logic | `Services/CustomerService.cs`, `Services/Result.cs` |
 | HTTP | `Controllers/CustomersController.cs` |
-| Frontend | `src/types/customer.ts`, `src/constants/customer.ts`, `src/services/customerService.ts`, `src/components/forms/CreateCustomerForm.tsx`, `src/pages/customers/CreateCustomerPage.tsx`, `src/routes/AppRoutes.tsx` |
+| Frontend | `src/types/customer.ts`, `src/constants/customer.ts`, `src/services/customerService.ts`, `src/components/forms/CustomerForm.tsx`, `src/pages/customers/CreateCustomerPage.tsx`, `src/routes/AppRoutes.tsx` |
 
 ---
 
@@ -174,13 +174,13 @@ preceding sibling carries `is-invalid`.
 
 ## 7. Testing
 
-**20 unit tests, all passing.** `dotnet test` from the repo root.
+**28 unit tests, all passing.** `dotnet test` from the repo root.
 
 ```
 tests/CustomerAssetService.Tests/
 ├── UnitTests/
 │   ├── PhoneNormalizerTests.cs      13 tests
-│   └── CustomerServiceTests.cs       7 tests
+│   └── CustomerServiceTests.cs      15 tests
 ├── Fakes/
 │   └── FakeCustomerRepository.cs
 ├── IntegrationTests/                 (empty — QA)
@@ -200,8 +200,9 @@ tests/CustomerAssetService.Tests/
 | GetById when exists → mapped response | all nine fields match |
 | GetById when missing → null | returns null |
 
-The other two tests in the same file cover the list endpoint and belong to a later
-story — see [Customer List & Detail](customer-list-and-detail.md).
+The other tests in the same file belong to later stories — the list endpoint in
+[Customer List & Detail](customer-list-and-detail.md), and editing and retiring a customer
+in [Update & Deactivate Customer](update-and-deactivate-customer.md).
 
 `FakeCustomerRepository` implements `ICustomerRepository` with fields controlling
 returns and recording arguments — no database, no mocking library. The third test's
@@ -210,7 +211,7 @@ call-count assertion is the valuable one: it proves the insert is never attempte
 ### Coverage
 
 ```
-31.8% line (90 / 283)  ·  26.6% branch (16 / 60)
+31.1% line (144 / 463)  ·  26.3% branch (30 / 114)
 ```
 
 Report: `docs/testing/coverage/index.html`
