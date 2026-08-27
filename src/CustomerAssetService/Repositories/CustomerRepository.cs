@@ -93,23 +93,38 @@ public class CustomerRepository : ICustomerRepository
         };
     }
 
-    public async Task<List<Customer>> GetAllAsync()
+    public async Task<List<Customer>> GetAllAsync(string? status = null)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
+
+        // The filter clause is only in the SQL when there is a status to filter
+        // on, so the unfiltered path runs exactly the query it ran before.
+        var sql = @"
+            SELECT id, name, phone, phone_normalized, phone_active_unique, address,
+                   customer_type, email, status, created_at, updated_at
+            FROM customers";
+
+        if (status is not null)
+        {
+            sql += " WHERE status = @status";
+        }
+
         // The ORDER BY is not decoration: without one MySQL guarantees nothing
         // about row order, so the same query can come back shuffled between
         // requests. Newest first is what an Agent wants after registering someone.
         // created_at is a second-precision TIMESTAMP, so two customers registered
         // within the same second would tie and shuffle anyway - id breaks the tie
-        // and makes the order total.
-        command.CommandText = @"
-            SELECT id, name, phone, phone_normalized, phone_active_unique, address,
-                   customer_type, email, status, created_at, updated_at
-            FROM customers
+        // and makes the order total. It applies to the filtered list too.
+        command.CommandText = sql + @"
             ORDER BY created_at DESC, id;";
+
+        if (status is not null)
+        {
+            command.Parameters.AddWithValue("@status", status);
+        }
 
         await using var reader = await command.ExecuteReaderAsync();
 

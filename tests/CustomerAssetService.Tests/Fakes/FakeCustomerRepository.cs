@@ -19,10 +19,21 @@ public class FakeCustomerRepository : ICustomerRepository
     // GetByIdAsync
     public string? GetByIdId;
     public Customer? CustomerToReturn;
+    public int GetByIdAsyncCallCount;
+    // Update and Deactivate look the customer up, write, then read the row back.
+    // Set this to make only that read-back miss - the row was gone by the time
+    // the service went looking for it again - which is the case the ?? fallback
+    // in the service exists for. The first lookup still succeeds, or the service
+    // would stop at its not-found guard and never reach the write at all.
+    public bool GetByIdReturnsNullAfterFirstCall;
 
     // GetAllAsync - defaults to an empty list, not null, so an unconfigured
     // fake stands in for "no customers yet" rather than blowing up the caller.
     public List<Customer> CustomersToReturn = new();
+    // What the status filter arrived as. Null covers both "not called" and
+    // "called with no filter", so assert on GetAllAsyncCallCount alongside it.
+    public string? GetAllStatus;
+    public int GetAllAsyncCallCount;
 
     // UpdateAsync
     public Customer? UpdatedCustomer;
@@ -57,12 +68,21 @@ public class FakeCustomerRepository : ICustomerRepository
     public Task<Customer?> GetByIdAsync(string id)
     {
         GetByIdId = id;
+        GetByIdAsyncCallCount++;
+
+        if (GetByIdReturnsNullAfterFirstCall && GetByIdAsyncCallCount > 1)
+        {
+            return Task.FromResult<Customer?>(null);
+        }
 
         return Task.FromResult(CustomerToReturn);
     }
 
-    public Task<List<Customer>> GetAllAsync()
+    public Task<List<Customer>> GetAllAsync(string? status = null)
     {
+        GetAllStatus = status;
+        GetAllAsyncCallCount++;
+
         return Task.FromResult(CustomersToReturn);
     }
 

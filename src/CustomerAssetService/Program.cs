@@ -24,7 +24,9 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<IDbConnectionFactory>(new MySqlConnectionFactory(connectionString));
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
+builder.Services.AddScoped<IAssetRepository, AssetRepository>();
 builder.Services.AddScoped<CustomerService>();
+builder.Services.AddScoped<AssetService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

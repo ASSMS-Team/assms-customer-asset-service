@@ -50,6 +50,12 @@ page stays useful to QA without anyone having to read the controller.
 Do not return 200 with an error payload, and do not return 500 for a condition
 the service can anticipate.
 
+A resource *referenced* by a field in the body is not the *addressed* resource, so
+a missing one is a 409 keyed on that field rather than a 404: `POST /api/assets`
+carrying a `customerId` that matches no customer addresses the assets collection,
+which exists - it is the field that is wrong, and keying it is what lets the
+frontend render the message against that input.
+
 ## Errors
 
 - All errors are RFC 7807 problem responses. Nothing hand-rolls its own error
