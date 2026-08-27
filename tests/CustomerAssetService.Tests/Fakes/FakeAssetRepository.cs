@@ -11,9 +11,9 @@ public class FakeAssetRepository : IAssetRepository
     // CreateAsync
     public Asset? CreatedAsset;
     public int CreateAsyncCallCount;
-    // Left null for the happy path. Set it to make CreateAsync throw - a
-    // MySqlException with number 1062 is what the service treats as the
-    // duplicate-serial race the unique index catches.
+    // Left null for the happy path. Set it to make CreateAsync or UpdateAsync
+    // throw - a MySqlException with number 1062 is what the service treats as
+    // the duplicate-serial race the unique index catches.
     public Exception? ExceptionToThrow;
 
     // GetByIdAsync - left null so an unconfigured fake stands in for "no such
@@ -30,8 +30,15 @@ public class FakeAssetRepository : IAssetRepository
     // passed the route's id through rather than looking something else up.
     public string? GetByCustomerIdCustomerId;
 
+    // UpdateAsync
+    public Asset? UpdatedAsset;
+    public int UpdateAsyncCallCount;
+
     // SerialExistsAsync
     public string? SerialExistsSerialNormalized;
+    // Null when the caller passed no id to exclude, which is how a test tells
+    // the create path's call apart from the update path's.
+    public string? SerialExistsExcludeAssetId;
     public int SerialExistsAsyncCallCount;
     public bool SerialExistsResult;
 
@@ -64,10 +71,35 @@ public class FakeAssetRepository : IAssetRepository
         return Task.FromResult(AssetsToReturn);
     }
 
-    public Task<bool> SerialExistsAsync(string serialNormalized)
+    public Task UpdateAsync(Asset asset)
+    {
+        // Recorded and counted before the throw, for the same reason as CreateAsync.
+        UpdatedAsset = asset;
+        UpdateAsyncCallCount++;
+
+        if (ExceptionToThrow is not null)
+        {
+            throw ExceptionToThrow;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> SerialExistsAsync(string serialNormalized, string? excludeAssetId = null)
     {
         SerialExistsSerialNormalized = serialNormalized;
+        SerialExistsExcludeAssetId = excludeAssetId;
         SerialExistsAsyncCallCount++;
+
+        // Stands in for the WHERE id != @excludeId: the excluded row is out of
+        // the query, so an asset still holding its own serial finds no clash
+        // even when a clash was configured. Any other serial still clashes.
+        if (excludeAssetId is not null
+            && excludeAssetId == AssetToReturn?.Id
+            && serialNormalized == AssetToReturn.SerialNormalized)
+        {
+            return Task.FromResult(false);
+        }
 
         return Task.FromResult(SerialExistsResult);
     }

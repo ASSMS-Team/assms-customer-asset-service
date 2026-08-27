@@ -79,6 +79,59 @@ public class AssetService
         return Result<AssetResponse>.Success(MapToResponse(created));
     }
 
+    public async Task<Result<AssetResponse>> UpdateAsync(string id, UpdateAssetRequest request)
+    {
+        var existing = await _repository.GetByIdAsync(id);
+
+        if (existing is null)
+        {
+            return Result<AssetResponse>.Failure(ServiceError.NotFound);
+        }
+
+        var serialNormalized = SerialNormalizer.Normalize(request.SerialNumber);
+
+        // The asset's own row holds this serial already, so it is excluded -
+        // otherwise saving the form without touching the serial would clash with itself.
+        if (await _repository.SerialExistsAsync(serialNormalized, excludeAssetId: id))
+        {
+            return Result<AssetResponse>.Failure(ServiceError.DuplicateSerial);
+        }
+
+        var asset = new Asset
+        {
+            // Identity and ownership stay as they were; only the editable fields
+            // come from the request.
+            Id = existing.Id,
+            CustomerId = existing.CustomerId,
+            CreatedAt = existing.CreatedAt,
+            AssetType = request.AssetType,
+            Model = request.Model,
+            SerialNumber = request.SerialNumber,
+            SerialNormalized = serialNormalized,
+            // [Required] has already rejected a null before the action ran, so
+            // the value is present by the time the service sees the request.
+            InstallationDate = request.InstallationDate!.Value,
+            Location = request.Location,
+            Notes = request.Notes
+        };
+
+        try
+        {
+            await _repository.UpdateAsync(asset);
+        }
+        catch (MySqlException ex) when (ex.Number == DuplicateEntryErrorNumber)
+        {
+            // Same race as on create: two requests can both clear the check above
+            // before either one writes, and the unique index is what settles it.
+            return Result<AssetResponse>.Failure(ServiceError.DuplicateSerial);
+        }
+
+        // Read back so updated_at is the value the database wrote, not a stale one.
+        var updated = await _repository.GetByIdAsync(asset.Id) ?? asset;
+
+        return Result<AssetResponse>.Success(MapToResponse(updated));
+    }
+
     public async Task<AssetResponse?> GetByIdAsync(string id)
     {
         var asset = await _repository.GetByIdAsync(id);

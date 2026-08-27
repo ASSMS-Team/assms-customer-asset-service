@@ -74,6 +74,46 @@ public class AssetsController : ControllerBase
 
         return CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value);
     }
+    /// <summary>
+    /// Updates an existing asset. The id, the owning customer and the creation
+    /// time are left as they are; only asset type, model, serial number,
+    /// installation date, location and notes change.
+    /// </summary>
+    /// <param name="id">The server-generated asset id (a GUID string) of the asset to update.</param>
+    /// <param name="request">The new asset type, model, serial number, installation date and location; notes are optional.</param>
+    /// <response code="200">Asset updated. The body is the stored asset as it now stands.</response>
+    /// <response code="400">A field failed validation - a missing asset type, model, serial number, installation date or location, a value over its maximum length, or an asset type other than the five permitted values. Errors are keyed by field name.</response>
+    /// <response code="404">No asset exists with this id.</response>
+    /// <response code="409">Another asset already holds this serial number. Keyed on "serialNumber" so it renders against the serial number input like a validation error.</response>
+    [HttpPut("{id}")]
+    [ProducesResponseType(typeof(AssetResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Update(string id, [FromBody] UpdateAssetRequest request)
+    {
+        var result = await _assetService.UpdateAsync(id, request);
+
+        if (result.Error == ServiceError.NotFound)
+        {
+            return NotFound();
+        }
+
+        if (result.Error == ServiceError.DuplicateSerial)
+        {
+            // Keyed on "serialNumber" so the frontend renders it against the
+            // serial number input exactly like a DataAnnotations failure.
+            return Conflict(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["serialNumber"] = new[] { "Another asset already exists with this serial number." }
+            })
+            {
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        return Ok(result.Value);
+    }
 
     /// <summary>
     /// Returns a single asset by id.
