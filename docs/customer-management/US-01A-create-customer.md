@@ -174,15 +174,19 @@ preceding sibling carries `is-invalid`.
 
 ## 7. Testing
 
-**28 unit tests, all passing.** `dotnet test` from the repo root.
+**58 unit tests, all passing.** `dotnet test` from the repo root.
 
 ```
 tests/CustomerAssetService.Tests/
 ├── UnitTests/
+│   ├── AssetServiceTests.cs          9 tests
+│   ├── CustomerServiceTests.cs      21 tests
 │   ├── PhoneNormalizerTests.cs      13 tests
-│   └── CustomerServiceTests.cs      15 tests
+│   └── SerialNormalizerTests.cs     15 tests
 ├── Fakes/
-│   └── FakeCustomerRepository.cs
+│   ├── FakeAssetRepository.cs
+│   ├── FakeCustomerRepository.cs
+│   └── MySqlExceptions.cs
 ├── IntegrationTests/                 (empty — QA)
 └── TestData/                         (empty)
 ```
@@ -211,17 +215,33 @@ call-count assertion is the valuable one: it proves the insert is never attempte
 ### Coverage
 
 ```
-31.1% line (144 / 463)  ·  26.3% branch (30 / 114)
+34.9% line (242 / 692)  ·  27.0% branch (46 / 170)
 ```
 
 Report: `docs/testing/coverage/index.html`
 
-Covered: `PhoneNormalizer`, `CustomerService`. Near-zero: `CustomerRepository`,
-`CustomersController`, `Program.cs`.
+| Class | Line | Branch |
+|---|---|---|
+| `CustomerService` | **100%** (96 / 96) | **100%** (22 / 22) |
+| `AssetService` | **100%** (57 / 57) | **100%** (10 / 10) |
+| `PhoneNormalizer` | **100%** (14 / 14) | **100%** (10 / 10) |
+| `SerialNormalizer` | **100%** (7 / 7) | **100%** (4 / 4) |
+| `CustomerRepository` | 0% (0 / 178) | 0% (0 / 62) |
+| `AssetRepository` | 0% (0 / 84) | 0% (0 / 30) |
+| `CustomersController` | 0% (0 / 61) | 0% (0 / 12) |
+| `AssetsController` | 0% (0 / 42) | 0% (0 / 8) |
+| `Program` | 0% (0 / 45) | 0% (0 / 8) |
 
-**That split is expected, not a defect.** The uncovered code is data access and startup
-wiring — neither is meaningfully unit-testable. Raising this number needs integration
-tests against the real container, not more unit tests.
+Both services are fully covered on lines **and branches**. The last two branches to
+fall were the `?? existing` fallbacks on the read-back in `UpdateAsync` and
+`DeactivateAsync` — the row disappearing between the write and the re-read. They
+were unreachable through the fake, which returned the same row on every call;
+`FakeCustomerRepository.GetByIdReturnsNullAfterFirstCall` makes only the read-back
+miss, which is what the fallback is there for.
+
+**The rest of the split is expected, not a defect.** The uncovered code is data access
+and startup wiring — neither is meaningfully unit-testable. Raising this number needs
+integration tests against the real container, not more unit tests.
 
 Regenerate:
 
@@ -241,11 +261,19 @@ Not covered by unit tests, and genuinely better as integration tests:
 1. **Criterion 3 end to end against real MySQL.** Verified manually in the mysql client
    and at service level with a fake, but never in code against the actual generated
    column and unique index. Highest-value test in this story.
-2. **The 1062 path.** `MySqlException` has no public constructor, so it can't be
-   constructed in a unit test without reflection. Integration testing is the natural
-   way to cover it.
-3. **`CustomerRepository`** — all three methods, including the `Guid`/`string` read
-   fixed above.
+2. **The 1062 path, under real concurrency.** ~~Can't be constructed in a unit test.~~
+   It can: `MySqlException` is sealed with only internal constructors, but
+   `Fakes/MySqlExceptions.cs` reaches the `(MySqlErrorCode, string)` one by reflection,
+   and the handler is now unit-tested on both the create and the update path. What is
+   still open is the half a unit test cannot reach — two simultaneous POSTs of the same
+   number, where the real unique index is what raises the error rather than a fabricated
+   exception standing in for it.
+3. **`CustomerRepository`** — all six methods (`CreateAsync`, `GetByIdAsync`,
+   `GetAllAsync`, `UpdateAsync`, `DeactivateAsync`, `ActivePhoneExistsAsync`), including
+   the `Guid`/`string` read fixed above. Two of them build their SQL conditionally —
+   `GetAllAsync` appends a `WHERE` only when given a status, `ActivePhoneExistsAsync`
+   appends an exclusion only when given an id to exclude — so each needs covering both
+   with the argument and without it.
 4. **Controller status codes** over HTTP.
 
 Manual verification already done through Swagger UI: 201 with Location header, 400
@@ -292,7 +320,7 @@ Requires `appsettings.Development.json` (see `appsettings.Example.json`) and fro
 
 ## TODO before merge
 
-- [ ] Per-class coverage percentages — fill in from `docs/testing/coverage/index.html`
+- [x] Per-class coverage percentages — **filled in above.** Both services at 100% line and branch
 - [ ] Confirm exact `ICustomerRepository` method signatures match section 5
 - [x] Route path for the create-customer page (`AppRoutes.tsx`) — **`/customers/new`**
 - [x] Whether `index.css` template styling stays or gets replaced — **stays.** The app theme

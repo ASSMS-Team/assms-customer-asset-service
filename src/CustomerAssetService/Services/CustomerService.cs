@@ -146,9 +146,11 @@ public class CustomerService
         return customer is null ? null : MapToResponse(customer);
     }
 
-    public async Task<List<CustomerResponse>> GetAllAsync()
+    // The filter is handed straight to the repository - which values are
+    // acceptable is an input rule, and those live on the way in, not here.
+    public async Task<List<CustomerResponse>> GetAllAsync(string? status = null)
     {
-        var customers = await _repository.GetAllAsync();
+        var customers = await _repository.GetAllAsync(status);
 
         return customers.Select(MapToResponse).ToList();
     }

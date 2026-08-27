@@ -94,6 +94,39 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WhenUniqueIndexRejectsTheInsert_ReturnsDuplicatePhone()
+    {
+        // Arrange - the pre-check passes and the insert still fails, which is
+        // the race the unique index exists to settle: two requests can both
+        // clear ActivePhoneExistsAsync before either one inserts.
+        var repository = new FakeCustomerRepository
+        {
+            ActivePhoneExistsResult = false,
+            ExceptionToThrow = MySqlExceptions.DuplicateKey(
+                "Duplicate entry '0771112222' for key 'uq_customers_phone_active'")
+        };
+        var service = new CustomerService(repository);
+        var request = new CreateCustomerRequest
+        {
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.CreateAsync(request);
+
+        // Assert - the same answer the pre-check would have given, so the loser
+        // of the race sees a duplicate-phone error and not a 500.
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.DuplicatePhone, result.Error);
+        // Unlike the pre-check case above, the insert was attempted - that is
+        // what distinguishes the race from the ordinary duplicate.
+        Assert.Equal(1, repository.CreateAsyncCallCount);
+    }
+
+    [Fact]
     public async Task GetByIdAsync_WhenCustomerExists_ReturnsMappedResponse()
     {
         // Arrange
@@ -206,6 +239,38 @@ public class CustomerServiceTests
         // an empty array rather than a 404 when nobody is registered.
         Assert.NotNull(responses);
         Assert.Empty(responses);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithStatus_PassesTheFilterToTheRepository()
+    {
+        // Arrange
+        var repository = new FakeCustomerRepository();
+        var service = new CustomerService(repository);
+
+        // Act
+        await service.GetAllAsync("ACTIVE");
+
+        // Assert - the service hands the filter over untouched; narrowing the
+        // list is the repository's WHERE clause, not something done in memory.
+        Assert.Equal(1, repository.GetAllAsyncCallCount);
+        Assert.Equal("ACTIVE", repository.GetAllStatus);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_WithNoStatus_PassesNullToTheRepository()
+    {
+        // Arrange
+        var repository = new FakeCustomerRepository();
+        var service = new CustomerService(repository);
+
+        // Act - called the way every existing caller calls it, with no argument.
+        await service.GetAllAsync();
+
+        // Assert - null, not an empty string: it is what makes the repository
+        // leave the WHERE clause off and return every customer.
+        Assert.Equal(1, repository.GetAllAsyncCallCount);
+        Assert.Null(repository.GetAllStatus);
     }
 
     [Fact]
@@ -378,6 +443,49 @@ public class CustomerServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_WhenUniqueIndexRejectsTheUpdate_ReturnsDuplicatePhone()
+    {
+        // Arrange - the same race on the update path: the pre-check clears and
+        // the unique index is what settles it once the write lands.
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing,
+            ActivePhoneExistsResult = false,
+            ExceptionToThrow = MySqlExceptions.DuplicateKey(
+                "Duplicate entry '0771112222' for key 'uq_customers_phone_active'")
+        };
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            Name = "Nimal Perera",
+            Phone = "0779998888",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.DuplicatePhone, result.Error);
+        // Unlike the pre-check case above, the update was attempted.
+        Assert.Equal(1, repository.UpdateAsyncCallCount);
+    }
+
+    [Fact]
     public async Task UpdateAsync_WhenPhoneUnchanged_ExcludesOwnRowAndSucceeds()
     {
         // Arrange - a clash is configured, so without the exclusion the customer
@@ -420,6 +528,53 @@ public class CustomerServiceTests
         Assert.Equal(ServiceError.None, result.Error);
         Assert.Equal(1, repository.UpdateAsyncCallCount);
         Assert.Equal("48 Kandy Road, Kadawatha", repository.UpdatedCustomer!.Address);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenTheRowVanishesBeforeTheReadBack_ReturnsWhatWasWritten()
+    {
+        // Arrange - the update lands and the row is gone by the time the service
+        // reads it back. Nothing in this service deletes a customer, so getting
+        // here needs a delete from outside it - which is exactly why the read-back
+        // has a fallback rather than being trusted to return a row.
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing,
+            GetByIdReturnsNullAfterFirstCall = true
+        };
+        var service = new CustomerService(repository);
+        var request = new UpdateCustomerRequest
+        {
+            Name = "Nimal Perera",
+            Phone = "0779998888",
+            Address = "48 Kandy Road, Kadawatha",
+            CustomerType = "INDIVIDUAL"
+        };
+
+        // Act
+        var result = await service.UpdateAsync(existing.Id, request);
+
+        // Assert - the write happened, so it succeeds rather than throwing:
+        // without the fallback the mapper would be handed a null. The response
+        // is built from what was written, so the caller sees the values it just
+        // sent rather than nothing at all.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal(1, repository.UpdateAsyncCallCount);
+        Assert.Equal("0779998888", result.Value!.Phone);
+        Assert.Equal("48 Kandy Road, Kadawatha", result.Value.Address);
     }
     [Fact]
     public async Task DeactivateAsync_WhenCustomerActive_MarksItInactive()
@@ -505,5 +660,41 @@ public class CustomerServiceTests
         // the deactivation itself rather than the last time somebody asked again.
         Assert.Equal(0, repository.DeactivateAsyncCallCount);
         Assert.Equal(existing.UpdatedAt, result.Value.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_WhenTheRowVanishesBeforeTheReadBack_ReturnsWhatWasKnown()
+    {
+        // Arrange - the same race on the deactivate path: the status write lands
+        // and the row is gone before the service reads it back.
+        var existing = new Customer
+        {
+            Id = "11111111-1111-1111-1111-111111111111",
+            Name = "Nimal Perera",
+            Phone = "0771112222",
+            PhoneNormalized = "0771112222",
+            Address = "12 Galle Road, Colombo 03",
+            CustomerType = "INDIVIDUAL",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc)
+        };
+        var repository = new FakeCustomerRepository
+        {
+            CustomerToReturn = existing,
+            GetByIdReturnsNullAfterFirstCall = true
+        };
+        var service = new CustomerService(repository);
+
+        // Act
+        var result = await service.DeactivateAsync(existing.Id);
+
+        // Assert - the deactivation happened, so it succeeds rather than
+        // throwing, and the customer comes back as the service last knew it.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal(1, repository.DeactivateAsyncCallCount);
+        Assert.Equal(existing.Id, result.Value!.Id);
+        Assert.Equal("INACTIVE", result.Value.Status);
     }
 }

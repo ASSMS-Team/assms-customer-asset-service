@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 using CustomerAssetService.DTOs;
 using CustomerAssetService.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -132,14 +134,26 @@ public class CustomersController : ControllerBase
     }
 
     /// <summary>
-    /// Returns every registered customer, newest first.
+    /// Returns registered customers, newest first. Without a status the list is
+    /// every customer whatever their status; with one it is only the customers
+    /// holding that status.
     /// </summary>
-    /// <response code="200">The customers. An empty list when none are registered - that is still a 200, not a 404.</response>
+    /// <param name="status">Optional status to filter on. Omit it for every customer, or pass ACTIVE or INACTIVE.</param>
+    /// <response code="200">The customers. An empty list when none match - that is still a 200, not a 404.</response>
+    /// <response code="400">The status is not ACTIVE or INACTIVE. Returned rather than an empty list, because an empty list reads as "no customers" and hides the typo. Keyed on "status".</response>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<CustomerResponse>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll()
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetAll(
+        // The annotation is what produces the 400: [ApiController] validates
+        // action parameters before the body runs, exactly as it does DTO
+        // properties, so there is no validation code here either. Null skips
+        // every attribute but [Required], so omitting the parameter is valid.
+        [FromQuery]
+        [RegularExpression("^(ACTIVE|INACTIVE)$", ErrorMessage = "Status must be ACTIVE or INACTIVE.")]
+        string? status)
     {
-        var customers = await _customerService.GetAllAsync();
+        var customers = await _customerService.GetAllAsync(status);
 
         return Ok(customers);
     }

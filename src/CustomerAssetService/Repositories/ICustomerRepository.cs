@@ -8,7 +8,9 @@ public interface ICustomerRepository
 
     Task<Customer?> GetByIdAsync(string id);
 
-    Task<List<Customer>> GetAllAsync();
+    // status is optional so existing call sites keep working unchanged, same as
+    // excludeCustomerId below; null means every customer whatever its status.
+    Task<List<Customer>> GetAllAsync(string? status = null);
 
     Task UpdateAsync(Customer customer);
 
