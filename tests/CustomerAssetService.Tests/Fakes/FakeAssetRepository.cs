@@ -34,6 +34,10 @@ public class FakeAssetRepository : IAssetRepository
     public Asset? UpdatedAsset;
     public int UpdateAsyncCallCount;
 
+    // DeactivateAsync
+    public string? DeactivatedId;
+    public int DeactivateAsyncCallCount;
+
     // SerialExistsAsync
     public string? SerialExistsSerialNormalized;
     // Null when the caller passed no id to exclude, which is how a test tells
@@ -80,6 +84,22 @@ public class FakeAssetRepository : IAssetRepository
         if (ExceptionToThrow is not null)
         {
             throw ExceptionToThrow;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeactivateAsync(string id)
+    {
+        DeactivatedId = id;
+        DeactivateAsyncCallCount++;
+
+        // The real UPDATE changes the row, so the service's read-back sees the
+        // new status; the fake would otherwise hand the same ACTIVE asset
+        // straight back and hide that.
+        if (AssetToReturn is not null && AssetToReturn.Id == id)
+        {
+            AssetToReturn.Status = "INACTIVE";
         }
 
         return Task.CompletedTask;

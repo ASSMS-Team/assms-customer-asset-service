@@ -14,6 +14,27 @@ page stays useful to QA without anyone having to read the controller.
 - A single resource is addressed by its id as the last segment:
   `GET /api/customers/{id}`.
 
+### The one exception: deactivation
+
+A state transition that is not "replace this resource with what I sent" gets a
+verb segment after the id, reached by `POST`:
+
+```
+POST /api/customers/{id}/deactivate
+POST /api/assets/{id}/deactivate
+```
+
+`DELETE` is wrong because the row is kept - only its status changes - and saying
+"deleted" to a client that then cannot fetch the record would be a lie. `PUT` is
+wrong because the caller sends no representation to put. This is the only shape
+allowed to break the no-verbs rule above, and a new one is expected to look like
+these two rather than invent a third spelling.
+
+Both are **idempotent**: deactivating something already inactive is a 200
+returning the record unchanged, not a 409, and the service skips the write so
+`updated_at` is not moved by a repeat call. A new deactivate endpoint is expected
+to behave the same way. Unknown id is the only failure, and it is a 404.
+
 ## Media types
 
 - Every controller carries `[Produces("application/json")]`. This service speaks
@@ -79,8 +100,36 @@ frontend render the message against that input.
   }
   ```
 
+- A conflict that belongs to the **request as a whole** rather than to any one
+  field is a plain `ProblemDetails` instead, with no `errors` object - there is
+  nothing to key it on:
+
+  ```json
+  {
+    "title": "Asset is not active.",
+    "status": 409,
+    "detail": "This asset has been deactivated and can no longer be edited."
+  }
+  ```
+
+- So a 409 comes back in **one of two shapes**, and which one is not optional:
+
+  | Cause | Shape | Rendered as |
+  | --- | --- | --- |
+  | A specific field is in conflict | `ValidationProblemDetails`, keyed | under that input |
+  | The whole request is refused | `ProblemDetails`, no `errors` | a form-level alert |
+
+  **The frontend branches on whether `errors` is present, never on the status
+  code.** Both `PUT /api/customers/{id}` and `PUT /api/assets/{id}` return both
+  shapes, so keying a whole-request conflict would render it under whichever input
+  the key happened to name, and leaving a field conflict un-keyed would strand the
+  message at the top of the form away from the input it is about.
+
 - `NotFound()` is likewise turned into a problem response by `[ApiController]`; do
   not attach a custom body to it.
+- `[ProducesResponseType]` for a status code that has both shapes names the
+  `ValidationProblemDetails` one. Swagger carries a single type per status code,
+  and the keyed shape is the one with structure worth documenting.
 
 ## Validation
 

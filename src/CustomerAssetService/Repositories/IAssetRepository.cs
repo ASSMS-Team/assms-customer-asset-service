@@ -14,6 +14,8 @@ public interface IAssetRepository
 
     Task UpdateAsync(Asset asset);
 
+    Task DeactivateAsync(string id);
+
     // Serials are unique across the whole table regardless of owner or status,
     // so unlike ActivePhoneExistsAsync there is nothing to scope. excludeAssetId
     // is optional so the create path can keep calling this with one argument;

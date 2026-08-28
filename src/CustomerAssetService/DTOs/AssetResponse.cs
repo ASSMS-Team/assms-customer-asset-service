@@ -29,6 +29,9 @@ public class AssetResponse
     /// <summary>Free-text notes about the asset, or null if none were supplied.</summary>
     public string? Notes { get; set; }
 
+    /// <summary>Lifecycle status of the asset. Newly created assets are ACTIVE.</summary>
+    public string Status { get; set; } = string.Empty;
+
     /// <summary>Database timestamp for when the asset was created.</summary>
     public DateTime CreatedAt { get; set; }
 

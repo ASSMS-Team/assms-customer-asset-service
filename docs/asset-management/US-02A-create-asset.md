@@ -356,7 +356,7 @@ Not covered by unit tests, and genuinely better as integration tests:
 cd assms-platform-infrastructure\docker\local
 docker compose up -d
 
-# 2. Migrations (service repo) — applies V01 and V02
+# 2. Migrations (service repo) — applies every V*.sql not already recorded
 $env:MYSQL_PASSWORD = '<customer_svc password>'
 .\scripts\development\apply_migrations.ps1 -Database customerdb -User customer_svc
 
@@ -368,6 +368,14 @@ npm run dev                                        # http://localhost:5173
 ```
 
 Then `/assets/new`, or "New asset" in the nav.
+
+Step 2 applied only `V01` and `V02` when this story was written. There are three
+migrations now, and the runner tracks applied filenames in a `schema_migrations` table and
+skips the ones already there — so re-running it is safe and does nothing on a database that
+is up to date. On a database migrated before the tracking existed, `V01` and `V02` are
+applied once more and then recorded, which costs nothing since both are
+`CREATE TABLE IF NOT EXISTS`. See
+[US-02D §2](deactivate-asset.md#2-the-migration--and-the-first-one-that-cannot-be-re-run).
 
 Requires `appsettings.Development.json` (see `appsettings.Example.json`) and frontend
 `.env` (see `.env.example`). Neither is committed.
