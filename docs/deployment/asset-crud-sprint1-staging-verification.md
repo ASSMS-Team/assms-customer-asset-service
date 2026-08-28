@@ -71,4 +71,11 @@ Asset lifecycle status was verified as `ACTIVE` / `INACTIVE`; it was not treated
 
 ## Frontend
 
-No merged React Asset implementation was found in `assms-frontend`; frontend staging deployment was not required for this API verification batch.
+The merged React Asset implementation was subsequently deployed to staging from
+`assms-frontend` SHA `1fdf64fe42cdfffce17d9585a4f226c5d95bc72b`.
+
+- Frontend HTTPS: working at `https://app-assms-frontend-staging-45ff260826.azurewebsites.net`.
+- SPA fallback: working; direct React routes return the SPA shell rather than an Azure route `404`.
+- Customer API HTTPS and the staging-origin CORS policy: working.
+- Manual browser verification: US-02A through US-02D PASS.
+- No unexpected browser-console, CORS, mixed-content, or routing errors were observed.
