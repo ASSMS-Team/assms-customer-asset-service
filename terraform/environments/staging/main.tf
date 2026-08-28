@@ -34,13 +34,13 @@ locals {
         priority                = 1100
         destination_port_ranges = ["80"]
         source_address_prefixes = var.http_allowed_source_cidrs
-        description             = "Allow HTTP only from explicitly approved CIDRs."
+        description             = "Allow HTTP for HTTPS redirection and ACME HTTP-01 validation."
       }
       AllowHttpsFromApprovedCidrs = {
         priority                = 1110
         destination_port_ranges = ["443"]
         source_address_prefixes = var.http_allowed_source_cidrs
-        description             = "Allow HTTPS only from explicitly approved CIDRs."
+        description             = "Allow public HTTPS access to the Customer and Asset Service reverse proxy."
       }
     } : {}
   )
@@ -63,6 +63,7 @@ module "public_ip" {
   name                = var.public_ip_name
   resource_group_name = local.resource_group_name
   location            = var.location
+  domain_name_label   = var.public_ip_domain_name_label
   tags                = var.tags
 }
 
