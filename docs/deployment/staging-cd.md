@@ -37,25 +37,17 @@ developer SSH keys in GitHub Actions.
 
 ## Azure OIDC Setup
 
-No ASSMS OIDC application registration currently exists. Before creating a
-federated credential, an authorized GitHub administrator must determine this
-repository's actual OIDC subject configuration. Do not assume the legacy branch
-subject format: newer repositories may use immutable repository-claim subject
-customization.
-
-Perform this one-time GitHub check with a token authorized to read repository
-Actions OIDC settings, then record the returned `include_claim_keys` / default
-status:
+The active authentication path is:
 
 ```text
-GET /repos/ASSMS-Team/assms-customer-asset-service/actions/oidc/customization/sub
+GitHub Actions -> GitHub OIDC -> id-assms-github-staging-cd -> resource-scoped RBAC
 ```
 
-Then issue a token from a tightly controlled `dev`-only diagnostic workflow or
-inspect the GitHub OIDC configuration UI, and use the resulting `sub` claim
-verbatim in Azure. The Azure federated credential issuer remains
-`https://token.actions.githubusercontent.com` and its audience remains
-`api://AzureADTokenExchange`.
+`id-assms-github-staging-cd` is an Azure User-Assigned Managed Identity. It has
+no client secret, password, certificate credential, or Entra application
+registration managed by this project. Its Customer federated credential uses
+the verified immutable `dev` subject and the
+`api://AzureADTokenExchange` audience.
 
 Assign only `Network Contributor` at this NSG scope:
 
@@ -63,15 +55,16 @@ Assign only `Network Contributor` at this NSG scope:
 /subscriptions/45ff51f1-702e-4ba3-98ff-435d3b08a04b/resourceGroups/rg-assms-staging/providers/Microsoft.Network/networkSecurityGroups/nsg-assms-customer-staging
 ```
 
-The workflow uses OIDC; it does not use an Azure client secret.
+The workflow uses the managed identity client ID through OIDC; it does not use
+an Azure client secret.
 
 ## Dedicated Deployment Key
 
-Generate a new CD-only Ed25519 key pair on a secure administrator machine. Add
-only its public key to `assmsadmin` while preserving existing authorized keys.
-Store the private key solely in `CUSTOMER_DEPLOY_SSH_PRIVATE_KEY`, and record a
+Use the dedicated no-passphrase Ed25519 CD key only for this workflow. Add only
+its public key to `assmsadmin` while preserving existing authorized keys. Store
+the private key solely in `CUSTOMER_DEPLOY_SSH_PRIVATE_KEY`, and record a
 verified host-key entry in `CUSTOMER_VM_SSH_KNOWN_HOSTS`. Do not reuse a
-developer key.
+developer key or disable strict host-key checking.
 
 ## Deployment Flow
 
