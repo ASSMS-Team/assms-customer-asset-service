@@ -13,7 +13,11 @@ public enum ServiceError
     // becomes a 404, whereas this is a customer referenced by a field in the
     // body, which fails as a business rule keyed on that field.
     CustomerNotFound = 4,
-    DuplicateSerial = 5
+    DuplicateSerial = 5,
+    // The asset this operation acts on is not ACTIVE. Kept separate from
+    // CustomerInactive rather than folded into a general "inactive": the two
+    // name different resources, and the controller's message has to say which.
+    AssetInactive = 6
 }
 
 // Expected failures are returned, not thrown, so the controller's branching is

@@ -58,7 +58,12 @@ public class AssetService
             // the value is present by the time the service sees the request.
             InstallationDate = request.InstallationDate!.Value,
             Location = request.Location,
-            Notes = request.Notes
+            Notes = request.Notes,
+            // Not sent to the database - the column's DEFAULT 'ACTIVE' is what
+            // actually writes it. It is set here so the fallback below has the
+            // status the row will hold, rather than an empty string, if the
+            // read-back misses.
+            Status = "ACTIVE"
         };
 
         try
@@ -86,6 +91,15 @@ public class AssetService
         if (existing is null)
         {
             return Result<AssetResponse>.Failure(ServiceError.NotFound);
+        }
+
+        // Only ACTIVE assets are editable - a deactivated asset is the record of
+        // a unit that is no longer in service, and rewriting it would change what
+        // that unit was. Checked before anything else runs, so a refused edit
+        // costs no serial lookup.
+        if (existing.Status != "ACTIVE")
+        {
+            return Result<AssetResponse>.Failure(ServiceError.AssetInactive);
         }
 
         var serialNormalized = SerialNormalizer.Normalize(request.SerialNumber);
@@ -132,6 +146,32 @@ public class AssetService
         return Result<AssetResponse>.Success(MapToResponse(updated));
     }
 
+    public async Task<Result<AssetResponse>> DeactivateAsync(string id)
+    {
+        var existing = await _repository.GetByIdAsync(id);
+
+        if (existing is null)
+        {
+            return Result<AssetResponse>.Failure(ServiceError.NotFound);
+        }
+
+        // Deactivating an already-inactive asset is the same answer as
+        // deactivating an active one, so it succeeds - but without a write.
+        // Writing redundantly would move updated_at and make a no-op look like
+        // a modification.
+        if (existing.Status != "ACTIVE")
+        {
+            return Result<AssetResponse>.Success(MapToResponse(existing));
+        }
+
+        await _repository.DeactivateAsync(id);
+
+        // Read back so status and updated_at are the values the database holds.
+        var deactivated = await _repository.GetByIdAsync(id) ?? existing;
+
+        return Result<AssetResponse>.Success(MapToResponse(deactivated));
+    }
+
     public async Task<AssetResponse?> GetByIdAsync(string id)
     {
         var asset = await _repository.GetByIdAsync(id);
@@ -166,6 +206,7 @@ public class AssetService
         InstallationDate = asset.InstallationDate,
         Location = asset.Location,
         Notes = asset.Notes,
+        Status = asset.Status,
         CreatedAt = asset.CreatedAt,
         UpdatedAt = asset.UpdatedAt
     };

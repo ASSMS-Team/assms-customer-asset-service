@@ -12,7 +12,10 @@ public class AssetRepository : IAssetRepository
         _connectionFactory = connectionFactory;
     }
 
-    // created_at and updated_at have database defaults, so neither is written here.
+    // status, created_at and updated_at have database defaults, so none of the
+    // three is written here. status is left to its DEFAULT 'ACTIVE' rather than
+    // sent explicitly: the column already says what a new asset starts as, and
+    // naming it here would be a second place to keep that in step.
     public async Task CreateAsync(Asset asset)
     {
         await using var connection = _connectionFactory.CreateConnection();
@@ -50,7 +53,7 @@ public class AssetRepository : IAssetRepository
         await using var command = connection.CreateCommand();
         command.CommandText = @"
             SELECT id, customer_id, asset_type, model, serial_number, serial_normalized,
-                   installation_date, location, notes, created_at, updated_at
+                   installation_date, location, notes, status, created_at, updated_at
             FROM assets
             WHERE id = @id;";
 
@@ -74,6 +77,7 @@ public class AssetRepository : IAssetRepository
         var installationDateOrdinal = reader.GetOrdinal("installation_date");
         var locationOrdinal = reader.GetOrdinal("location");
         var notesOrdinal = reader.GetOrdinal("notes");
+        var statusOrdinal = reader.GetOrdinal("status");
         var createdAtOrdinal = reader.GetOrdinal("created_at");
         var updatedAtOrdinal = reader.GetOrdinal("updated_at");
 
@@ -93,6 +97,7 @@ public class AssetRepository : IAssetRepository
             InstallationDate = reader.GetFieldValue<DateOnly>(installationDateOrdinal),
             Location = reader.GetString(locationOrdinal),
             Notes = reader.IsDBNull(notesOrdinal) ? null : reader.GetString(notesOrdinal),
+            Status = reader.GetString(statusOrdinal),
             CreatedAt = reader.GetDateTime(createdAtOrdinal),
             UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
         };
@@ -112,7 +117,7 @@ public class AssetRepository : IAssetRepository
         // anyway - id breaks the tie and makes the order total.
         command.CommandText = @"
             SELECT id, customer_id, asset_type, model, serial_number, serial_normalized,
-                   installation_date, location, notes, created_at, updated_at
+                   installation_date, location, notes, status, created_at, updated_at
             FROM assets
             WHERE customer_id = @customerId
             ORDER BY created_at DESC, id;";
@@ -132,6 +137,7 @@ public class AssetRepository : IAssetRepository
         var installationDateOrdinal = reader.GetOrdinal("installation_date");
         var locationOrdinal = reader.GetOrdinal("location");
         var notesOrdinal = reader.GetOrdinal("notes");
+        var statusOrdinal = reader.GetOrdinal("status");
         var createdAtOrdinal = reader.GetOrdinal("created_at");
         var updatedAtOrdinal = reader.GetOrdinal("updated_at");
 
@@ -155,6 +161,7 @@ public class AssetRepository : IAssetRepository
                 InstallationDate = reader.GetFieldValue<DateOnly>(installationDateOrdinal),
                 Location = reader.GetString(locationOrdinal),
                 Notes = reader.IsDBNull(notesOrdinal) ? null : reader.GetString(notesOrdinal),
+                Status = reader.GetString(statusOrdinal),
                 CreatedAt = reader.GetDateTime(createdAtOrdinal),
                 UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
             });
@@ -164,8 +171,10 @@ public class AssetRepository : IAssetRepository
     }
 
     // customer_id is not in the SET list: an asset does not change hands, and
-    // moving one would rewrite whose equipment history it belongs to. created_at
-    // never changes, and updated_at is maintained by the column's ON UPDATE default.
+    // moving one would rewrite whose equipment history it belongs to. status is
+    // not in it either - deactivating an asset is a separate operation.
+    // created_at never changes, and updated_at is maintained by the column's
+    // ON UPDATE default.
     public async Task UpdateAsync(Asset asset)
     {
         await using var connection = _connectionFactory.CreateConnection();
@@ -193,6 +202,26 @@ public class AssetRepository : IAssetRepository
         command.Parameters.AddWithValue("@location", asset.Location);
         command.Parameters.AddWithValue("@notes", (object?)asset.Notes ?? DBNull.Value);
         command.Parameters.AddWithValue("@id", asset.Id);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    // Status is the only column written; updated_at maintains itself. Nothing is
+    // released by this the way deactivating a customer frees its phone number -
+    // serial_normalized is unique across the whole table whatever the status,
+    // because the physical unit behind a retired row still exists.
+    public async Task DeactivateAsync(string id)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            UPDATE assets
+            SET status = 'INACTIVE'
+            WHERE id = @id;";
+
+        command.Parameters.AddWithValue("@id", id);
 
         await command.ExecuteNonQueryAsync();
     }

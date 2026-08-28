@@ -1,6 +1,6 @@
 namespace CustomerAssetService.Models;
 
-// Internal representation of a row in the assets table - all eleven columns,
+// Internal representation of a row in the assets table - all twelve columns,
 // including the ones the API never exposes. Kept separate from the DTOs so the
 // API shape can change without touching persistence.
 public class Asset
@@ -24,6 +24,8 @@ public class Asset
     public string Location { get; set; } = string.Empty;
 
     public string? Notes { get; set; }
+
+    public string Status { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; }
 

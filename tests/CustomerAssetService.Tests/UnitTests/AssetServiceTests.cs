@@ -45,6 +45,9 @@ public class AssetServiceTests
         InstallationDate = new DateOnly(2024, 6, 1),
         Location = "Living room",
         Notes = "fitted upstairs",
+        // The update path refuses anything that is not ACTIVE, so the asset the
+        // update tests edit has to carry a status the way a real row does.
+        Status = "ACTIVE",
         CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
         UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
     };
@@ -444,6 +447,29 @@ public class AssetServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_WhenAssetInactive_ReturnsAssetInactiveWithoutUpdating()
+    {
+        // Arrange
+        var inactive = ExistingAsset();
+        inactive.Status = "INACTIVE";
+
+        var assets = new FakeAssetRepository { AssetToReturn = inactive };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.UpdateAsync(inactive.Id, ValidUpdateRequest());
+
+        // Assert - a deactivated asset is the record of a unit no longer in
+        // service; editing it would change what that unit was.
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.AssetInactive, result.Error);
+        Assert.Equal(0, assets.UpdateAsyncCallCount);
+        // The gate runs before the serial is looked at, so a refused edit costs
+        // no query - the same ordering the create path's customer checks have.
+        Assert.Equal(0, assets.SerialExistsAsyncCallCount);
+    }
+
+    [Fact]
     public async Task UpdateAsync_WhenAnotherAssetHasSerial_FailsWithoutUpdating()
     {
         // Arrange - the new serial is held by another asset, so the pre-check
@@ -525,5 +551,90 @@ public class AssetServiceTests
         Assert.Equal(ServiceError.DuplicateSerial, result.Error);
         // Unlike the pre-check case above, the update was attempted.
         Assert.Equal(1, assets.UpdateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_WhenAssetActive_MarksItInactive()
+    {
+        // Arrange
+        var existing = new Asset
+        {
+            Id = AssetId,
+            CustomerId = CustomerId,
+            AssetType = "AIR_CONDITIONER",
+            Model = "CoolMax 12",
+            SerialNumber = "ABC-123",
+            SerialNormalized = "ABC123",
+            InstallationDate = new DateOnly(2024, 6, 1),
+            Location = "Living room",
+            Notes = "fitted upstairs",
+            Status = "ACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+        };
+        var assets = new FakeAssetRepository { AssetToReturn = existing };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.DeactivateAsync(existing.Id);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        Assert.Equal(1, assets.DeactivateAsyncCallCount);
+        Assert.Equal(existing.Id, assets.DeactivatedId);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_WhenAssetMissing_ReturnsNotFoundWithoutWriting()
+    {
+        // Arrange - AssetToReturn is left null, standing in for no such row.
+        var assets = new FakeAssetRepository();
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.DeactivateAsync("00000000-0000-0000-0000-000000000000");
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.NotFound, result.Error);
+        Assert.Equal(0, assets.DeactivateAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_WhenAlreadyInactive_SucceedsWithoutWriting()
+    {
+        // Arrange
+        var existing = new Asset
+        {
+            Id = AssetId,
+            CustomerId = CustomerId,
+            AssetType = "REFRIGERATOR",
+            Model = "FrostFree 300",
+            SerialNumber = "XYZ-999",
+            SerialNormalized = "XYZ999",
+            InstallationDate = new DateOnly(2023, 1, 15),
+            Location = "Kitchen",
+            Notes = null,
+            Status = "INACTIVE",
+            CreatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 8, 26, 10, 0, 0, DateTimeKind.Utc),
+        };
+        var assets = new FakeAssetRepository { AssetToReturn = existing };
+        var service = new AssetService(assets, new FakeCustomerRepository());
+
+        // Act
+        var result = await service.DeactivateAsync(existing.Id);
+
+        // Assert - repeating the call is not an error, and the asset comes back
+        // as it stands.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ServiceError.None, result.Error);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        // The one that matters: no redundant write, so updated_at still reflects
+        // the deactivation itself rather than the last time somebody asked again.
+        Assert.Equal(0, assets.DeactivateAsyncCallCount);
+        Assert.Equal(existing.UpdatedAt, result.Value.UpdatedAt);
     }
 }
