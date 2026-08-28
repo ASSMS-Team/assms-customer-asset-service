@@ -2,11 +2,12 @@
 
 ## Scope and Trigger
 
-`.github/workflows/staging-cd.yml` deploys only the `dev` branch after the
-`Customer Asset Service CI` workflow completes successfully. It checks out the
-workflow-run head SHA, builds and deploys that exact SHA, and serializes staging
-deployments with `customer-asset-staging-deployment`. Manual dispatch is
-accepted only when the workflow is run from `dev`.
+`.github/workflows/staging-cd.yml` is reusable. `Customer Asset Service CI`
+calls it only after `terraform-validation` and `dotnet-build-test` succeed for
+a `dev` push. The caller passes its exact `github.sha`, which the reusable
+workflow checks out, builds, tags, and deploys. This keeps CI and CD on the
+same commit without `workflow_run` or a default-branch dependency. Manual
+dispatch is accepted only when the workflow is run from `dev`.
 
 ## Required GitHub Configuration
 
@@ -36,15 +37,25 @@ developer SSH keys in GitHub Actions.
 
 ## Azure OIDC Setup
 
-No ASSMS OIDC application registration currently exists. An Azure administrator
-must create one application/service principal and configure two federated
-credentials, one for each repository. For this repository, use:
+No ASSMS OIDC application registration currently exists. Before creating a
+federated credential, an authorized GitHub administrator must determine this
+repository's actual OIDC subject configuration. Do not assume the legacy branch
+subject format: newer repositories may use immutable repository-claim subject
+customization.
+
+Perform this one-time GitHub check with a token authorized to read repository
+Actions OIDC settings, then record the returned `include_claim_keys` / default
+status:
 
 ```text
-issuer: https://token.actions.githubusercontent.com
-audience: api://AzureADTokenExchange
-subject: repo:ASSMS-Team/assms-customer-asset-service:ref:refs/heads/dev
+GET /repos/ASSMS-Team/assms-customer-asset-service/actions/oidc/customization/sub
 ```
+
+Then issue a token from a tightly controlled `dev`-only diagnostic workflow or
+inspect the GitHub OIDC configuration UI, and use the resulting `sub` claim
+verbatim in Azure. The Azure federated credential issuer remains
+`https://token.actions.githubusercontent.com` and its audience remains
+`api://AzureADTokenExchange`.
 
 Assign only `Network Contributor` at this NSG scope:
 

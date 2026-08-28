@@ -86,3 +86,19 @@ jobs:
           path: TestResults/**
           if-no-files-found: warn
           retention-days: 14
+
+  deploy-staging:
+    name: Staging CD
+    needs:
+      - terraform-validation
+      - dotnet-build-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/staging-cd.yml
+    with:
+      commit_sha: ${{ github.sha }}
+      source_ref: ${{ github.ref }}
+    secrets:
+      CUSTOMER_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.CUSTOMER_DEPLOY_SSH_PRIVATE_KEY }}
