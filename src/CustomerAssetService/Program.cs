@@ -1,8 +1,10 @@
+using System.Net;
 using System.Reflection;
 using System.Text.Json;
 
 using CustomerAssetService.Repositories;
 using CustomerAssetService.Services;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +22,17 @@ builder.Services.AddCors(options =>
         .WithOrigins(allowedOrigins)
         .AllowAnyHeader()
         .AllowAnyMethod());
+});
+
+// Nginx reaches the loopback-published container through Docker's bridge
+// gateway. Trust only that observed proxy address when consuming forwarded
+// client and scheme headers; never accept them from arbitrary upstreams.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+    options.KnownProxies.Add(IPAddress.Parse("172.17.0.1").MapToIPv6());
 });
 
 builder.Services.AddSingleton<IDbConnectionFactory>(new MySqlConnectionFactory(connectionString));
@@ -55,6 +68,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
 
