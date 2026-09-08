@@ -58,6 +58,7 @@ the physical unit behind a retired row still exists.
 |---|---|
 | Customers | [US-01A — Create Customer](docs/customer-management/US-01A-create-customer.md) · [List & Detail](docs/customer-management/customer-list-and-detail.md) · [Update & Deactivate](docs/customer-management/update-and-deactivate-customer.md) |
 | Assets | [US-02A — Create Asset](docs/asset-management/US-02A-create-asset.md) · [List & Detail](docs/asset-management/asset-list-and-detail.md) · [US-02C — Update Asset](docs/asset-management/update-asset.md) · [US-02D — Deactivate Asset](docs/asset-management/deactivate-asset.md) |
+| Authentication | [US-AUTH-01 — Staff Login and RBAC](docs/authentication/US-AUTH-01-staff-login-rbac.md) · [Sprint 2 staging accounts](docs/authentication/staging-accounts.md) |
 | Deployment | [Staging infrastructure](docs/deployment/staging-infrastructure.md) · [Customer CRUD sprint 1 staging verification](docs/deployment/customer-crud-sprint1-staging-verification.md) |
 
 ## Database Ownership

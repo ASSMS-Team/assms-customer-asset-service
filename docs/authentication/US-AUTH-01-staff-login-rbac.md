@@ -40,3 +40,9 @@ Success returns `accessToken`, `tokenType`, `expiresAt` and the public staff ide
 | Create, update or deactivate assets | Allow | Deny | Deny | Allow |
 
 Other services remain responsible for enforcing their own job, dispatch and reporting permissions using the shared token contract.
+
+## Staging verification accounts
+
+See [Sprint 2 staging staff accounts](staging-accounts.md) for the approved
+usernames, roles, endpoints and verified staging behaviour. Passwords remain in
+the team's private credential store and are not committed to Git.
