@@ -15,6 +15,8 @@ The service creates one Manager only when no Manager exists and all bootstrap va
 
 For role verification, Development and Staging may supply `Authentication__SeedAccounts__{index}__Username`, `Email`, `Password` and `Role`. Supported roles are Agent, Dispatcher, Technician and Manager. These approved accounts are created only when the email is absent; plaintext credentials remain external to Git. Production ignores this seed list.
 
+The staging workflow runs the image once with `--apply-auth-migration` before replacing the live container. This applies and records `V04__create_staff_accounts.sql` using the existing protected database connection from `/etc/assms/customer.env`. A failed migration stops deployment before the current container is removed.
+
 JWTs use the configured issuer and audience and expire after 60 minutes. Sprint 2 has no refresh-token or server-side revocation flow. Logout clears the browser session token; expiry requires login again.
 
 ## API
