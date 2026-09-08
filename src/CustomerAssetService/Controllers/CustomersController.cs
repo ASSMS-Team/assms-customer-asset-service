@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 
 using CustomerAssetService.DTOs;
 using CustomerAssetService.Services;
+using CustomerAssetService.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CustomerAssetService.Controllers;
@@ -9,6 +11,7 @@ namespace CustomerAssetService.Controllers;
 [ApiController]
 [Route("api/customers")]
 [Produces("application/json")]
+[Authorize(Roles = StaffRoles.All)]
 public class CustomersController : ControllerBase
 {
     private readonly CustomerService _customerService;
@@ -34,6 +37,7 @@ public class CustomersController : ControllerBase
     /// <response code="400">A field failed validation - missing name, phone, address or customer type, a value over its maximum length, a customer type other than INDIVIDUAL or BUSINESS, or a malformed email. Errors are keyed by field name.</response>
     /// <response code="409">An active customer already exists with this phone number. Keyed on "phone" so it renders against the phone input like a validation error.</response>
     [HttpPost]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status409Conflict)]
@@ -70,6 +74,7 @@ public class CustomersController : ControllerBase
     /// <response code="404">No customer exists with this id.</response>
     /// <response code="409">Either the customer is not active and so cannot be edited, or another active customer already holds this phone number. The two are told apart by the body: the inactive case is a plain message, the duplicate is keyed on "phone".</response>
     [HttpPut("{id}")]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -124,6 +129,7 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customer as it now stands, with status INACTIVE. Returned whether this call deactivated it or it was already inactive.</response>
     /// <response code="404">No customer exists with this id.</response>
     [HttpPost("{id}/deactivate")]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Deactivate(string id)

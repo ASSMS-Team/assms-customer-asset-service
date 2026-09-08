@@ -1,5 +1,7 @@
 using CustomerAssetService.DTOs;
 using CustomerAssetService.Services;
+using CustomerAssetService.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CustomerAssetService.Controllers;
@@ -7,6 +9,7 @@ namespace CustomerAssetService.Controllers;
 [ApiController]
 [Route("api/assets")]
 [Produces("application/json")]
+[Authorize(Roles = StaffRoles.All)]
 public class AssetsController : ControllerBase
 {
     private readonly AssetService _assetService;
@@ -28,6 +31,7 @@ public class AssetsController : ControllerBase
     /// <response code="400">A field failed validation - a missing customer id, asset type, model, serial number, installation date or location, a value over its maximum length, or an asset type other than the five permitted values. Errors are keyed by field name.</response>
     /// <response code="409">Either no customer exists with the supplied customer id, or that customer is not active, or another asset already holds this serial number. The three are told apart by the key in the body: "customerId" for the first two, "serialNumber" for the last.</response>
     [HttpPost]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(AssetResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status409Conflict)]
@@ -87,6 +91,7 @@ public class AssetsController : ControllerBase
     /// <response code="404">No asset exists with this id.</response>
     /// <response code="409">Either the asset is not active and so cannot be edited, or another asset already holds this serial number. The two are told apart by the body: the inactive case is a plain message, the duplicate is keyed on "serialNumber".</response>
     [HttpPut("{id}")]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(AssetResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -140,6 +145,7 @@ public class AssetsController : ControllerBase
     /// <response code="200">The asset as it now stands, with status INACTIVE. Returned whether this call deactivated it or it was already inactive.</response>
     /// <response code="404">No asset exists with this id.</response>
     [HttpPost("{id}/deactivate")]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(AssetResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Deactivate(string id)
