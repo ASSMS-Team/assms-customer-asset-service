@@ -92,11 +92,22 @@ jobs:
           # Run the Azure command in Microsoft's versioned CLI container.
           azcliversion: 2.76.0
           inlineScript: |
+            used_priorities="$(az network nsg rule list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --nsg-name "$CUSTOMER_NSG_NAME" \
+              --query "[?direction=='Inbound'].priority" \
+              --output tsv)"
+            rule_priority="$CUSTOMER_TEMP_SSH_RULE_PRIORITY"
+            max_priority=$((CUSTOMER_TEMP_SSH_RULE_PRIORITY + 99))
+            while printf '%s\n' "$used_priorities" | grep -qx "$rule_priority"; do
+              rule_priority=$((rule_priority + 1))
+              test "$rule_priority" -le "$max_priority"
+            done
             az network nsg rule create \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --nsg-name "$CUSTOMER_NSG_NAME" \
               --name "$TEMP_SSH_RULE_NAME" \
-              --priority "$CUSTOMER_TEMP_SSH_RULE_PRIORITY" \
+              --priority "$rule_priority" \
               --direction Inbound \
               --access Allow \
               --protocol Tcp \
