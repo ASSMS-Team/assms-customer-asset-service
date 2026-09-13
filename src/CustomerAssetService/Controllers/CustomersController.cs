@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using CustomerAssetService.DTOs;
 using CustomerAssetService.Services;
 using CustomerAssetService.Security;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,7 +12,6 @@ namespace CustomerAssetService.Controllers;
 [ApiController]
 [Route("api/customers")]
 [Produces("application/json")]
-[Authorize(Roles = StaffRoles.All)]
 public class CustomersController : ControllerBase
 {
     private readonly CustomerService _customerService;
@@ -153,6 +153,7 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customers. An empty list when none match - that is still a 200, not a 404.</response>
     /// <response code="400">The status is not ACTIVE or INACTIVE. Returned rather than an empty list, because an empty list reads as "no customers" and hides the typo. Keyed on "status".</response>
     [HttpGet]
+    [Authorize(Roles = StaffRoles.All)]
     [ProducesResponseType(typeof(IEnumerable<CustomerResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAll(
@@ -179,6 +180,7 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customer's assets. An empty list when the customer has none - that is still a 200, not a 404.</response>
     /// <response code="404">No customer exists with this id. Unlike the create path's 409, the customer here is the addressed resource, so a missing one is a 404.</response>
     [HttpGet("{customerId}/assets")]
+    [Authorize(Roles = StaffRoles.All)]
     [ProducesResponseType(typeof(IEnumerable<AssetResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetAssets(string customerId)
@@ -200,6 +202,8 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customer with this id.</response>
     /// <response code="404">No customer exists with this id.</response>
     [HttpGet("{id}")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme + "," + InternalServiceAuthenticationDefaults.Scheme,
+        Roles = StaffRoles.All + "," + StaffRoles.InternalService)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(string id)

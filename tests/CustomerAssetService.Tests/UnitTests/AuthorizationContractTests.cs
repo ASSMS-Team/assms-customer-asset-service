@@ -7,12 +7,24 @@ namespace CustomerAssetService.Tests.UnitTests;
 public sealed class AuthorizationContractTests
 {
     [Theory]
+    [InlineData(typeof(CustomersController), "GetAll")]
+    [InlineData(typeof(CustomersController), "GetAssets")]
+    public void CollectionReads_RequireAllSupportedStaffRoles(Type controllerType, string methodName)
+    {
+        var method = controllerType.GetMethod(methodName)!;
+        var attribute = Assert.Single(method.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
+        Assert.Equal(StaffRoles.All, attribute.Roles);
+    }
+
+    [Theory]
     [InlineData(typeof(CustomersController))]
     [InlineData(typeof(AssetsController))]
-    public void ResourceControllers_RequireAllSupportedStaffRoles(Type controllerType)
+    public void IndividualReads_AllowTheInternalJobServiceScheme(Type controllerType)
     {
-        var attribute = Assert.Single(controllerType.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
-        Assert.Equal(StaffRoles.All, attribute.Roles);
+        var method = controllerType.GetMethod("GetById")!;
+        var attribute = Assert.Single(method.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
+        Assert.Contains(InternalServiceAuthenticationDefaults.Scheme, attribute.AuthenticationSchemes);
+        Assert.Contains(StaffRoles.InternalService, attribute.Roles);
     }
 
     [Theory]
