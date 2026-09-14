@@ -61,6 +61,11 @@ builder.Services.AddOptions<JwtOptions>()
     .Validate(options => options.LifetimeMinutes is > 0 and <= 1440,
         "Authentication:Jwt:LifetimeMinutes must be between 1 and 1440.")
     .ValidateOnStart();
+builder.Services.AddOptions<InternalServiceAuthenticationOptions>()
+    .Bind(builder.Configuration.GetSection(InternalServiceAuthenticationOptions.SectionName))
+    .Validate(options => Encoding.UTF8.GetByteCount(options.Key) >= 32,
+        "InternalServiceAuthentication:Key must contain at least 32 UTF-8 bytes.")
+    .ValidateOnStart();
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -80,6 +85,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = "role"
         };
     });
+builder.Services.AddAuthentication()
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, InternalServiceKeyAuthenticationHandler>(
+        InternalServiceAuthenticationDefaults.Scheme, _ => { });
 builder.Services.AddAuthorization();
 
 builder.Services.AddControllers()

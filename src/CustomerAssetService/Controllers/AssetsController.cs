@@ -1,6 +1,7 @@
 using CustomerAssetService.DTOs;
 using CustomerAssetService.Services;
 using CustomerAssetService.Security;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,7 +10,6 @@ namespace CustomerAssetService.Controllers;
 [ApiController]
 [Route("api/assets")]
 [Produces("application/json")]
-[Authorize(Roles = StaffRoles.All)]
 public class AssetsController : ControllerBase
 {
     private readonly AssetService _assetService;
@@ -167,6 +167,8 @@ public class AssetsController : ControllerBase
     /// <response code="200">The asset with this id.</response>
     /// <response code="404">No asset exists with this id.</response>
     [HttpGet("{id}")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme + "," + InternalServiceAuthenticationDefaults.Scheme,
+        Roles = StaffRoles.All + "," + StaffRoles.InternalService)]
     [ProducesResponseType(typeof(AssetResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(string id)
