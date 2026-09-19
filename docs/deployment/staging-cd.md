@@ -21,7 +21,7 @@ Create these GitHub **Actions variables** in this repository:
 | `AZURE_RESOURCE_GROUP` | `rg-assms-staging`. |
 | `CUSTOMER_API_URL` | `https://assms-customer-staging-45ff260826.southeastasia.cloudapp.azure.com` |
 | `CUSTOMER_NSG_NAME` | `nsg-assms-customer-staging`. |
-| `CUSTOMER_TEMP_SSH_RULE_PRIORITY` | An unused NSG priority, such as `1000`. |
+| `CUSTOMER_TEMP_SSH_RULE_PRIORITY` | Start of the 100-priority range used to select a free temporary inbound NSG priority, such as `1000`. |
 | `CUSTOMER_VM_HOST` | Customer staging VM public DNS hostname. |
 | `CUSTOMER_VM_SSH_USERNAME` | `assmsadmin`. |
 | `CUSTOMER_VM_SSH_KNOWN_HOSTS` | Verified `known_hosts` entry for the Customer VM. |

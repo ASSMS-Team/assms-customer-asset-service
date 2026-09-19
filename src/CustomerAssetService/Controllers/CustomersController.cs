@@ -2,6 +2,9 @@ using System.ComponentModel.DataAnnotations;
 
 using CustomerAssetService.DTOs;
 using CustomerAssetService.Services;
+using CustomerAssetService.Security;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CustomerAssetService.Controllers;
@@ -34,6 +37,7 @@ public class CustomersController : ControllerBase
     /// <response code="400">A field failed validation - missing name, phone, address or customer type, a value over its maximum length, a customer type other than INDIVIDUAL or BUSINESS, or a malformed email. Errors are keyed by field name.</response>
     /// <response code="409">An active customer already exists with this phone number. Keyed on "phone" so it renders against the phone input like a validation error.</response>
     [HttpPost]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status409Conflict)]
@@ -70,6 +74,7 @@ public class CustomersController : ControllerBase
     /// <response code="404">No customer exists with this id.</response>
     /// <response code="409">Either the customer is not active and so cannot be edited, or another active customer already holds this phone number. The two are told apart by the body: the inactive case is a plain message, the duplicate is keyed on "phone".</response>
     [HttpPut("{id}")]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -124,6 +129,7 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customer as it now stands, with status INACTIVE. Returned whether this call deactivated it or it was already inactive.</response>
     /// <response code="404">No customer exists with this id.</response>
     [HttpPost("{id}/deactivate")]
+    [Authorize(Roles = StaffRoles.CustomerEditors)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Deactivate(string id)
@@ -147,6 +153,7 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customers. An empty list when none match - that is still a 200, not a 404.</response>
     /// <response code="400">The status is not ACTIVE or INACTIVE. Returned rather than an empty list, because an empty list reads as "no customers" and hides the typo. Keyed on "status".</response>
     [HttpGet]
+    [Authorize(Roles = StaffRoles.All)]
     [ProducesResponseType(typeof(IEnumerable<CustomerResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAll(
@@ -173,6 +180,7 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customer's assets. An empty list when the customer has none - that is still a 200, not a 404.</response>
     /// <response code="404">No customer exists with this id. Unlike the create path's 409, the customer here is the addressed resource, so a missing one is a 404.</response>
     [HttpGet("{customerId}/assets")]
+    [Authorize(Roles = StaffRoles.All)]
     [ProducesResponseType(typeof(IEnumerable<AssetResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetAssets(string customerId)
@@ -194,6 +202,8 @@ public class CustomersController : ControllerBase
     /// <response code="200">The customer with this id.</response>
     /// <response code="404">No customer exists with this id.</response>
     [HttpGet("{id}")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme + "," + InternalServiceAuthenticationDefaults.Scheme,
+        Roles = StaffRoles.All + "," + StaffRoles.InternalService)]
     [ProducesResponseType(typeof(CustomerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(string id)

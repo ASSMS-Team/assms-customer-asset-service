@@ -77,23 +77,44 @@ jobs:
           printf '%s\n' "${{ vars.CUSTOMER_VM_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/customer_deploy_ed25519 ~/.ssh/known_hosts
 
-      - name: Allow temporary SSH from this runner only
-        id: temporary_ssh
+      - name: Resolve this runner's public IP
         run: |
           runner_ip="$(curl --fail --silent --show-error --retry 3 https://api.ipify.org)"
           test -n "$runner_ip"
-          az network nsg rule create \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --nsg-name "$CUSTOMER_NSG_NAME" \
-            --name "$TEMP_SSH_RULE_NAME" \
-            --priority "$CUSTOMER_TEMP_SSH_RULE_PRIORITY" \
-            --direction Inbound \
-            --access Allow \
-            --protocol Tcp \
-            --source-address-prefixes "${runner_ip}/32" \
-            --source-port-ranges '*' \
-            --destination-address-prefixes '*' \
-            --destination-port-ranges 22
+          echo "RUNNER_IP=${runner_ip}" >> "$GITHUB_ENV"
+
+      - name: Allow temporary SSH from this runner only
+        id: temporary_ssh
+        uses: azure/cli@v2
+        with:
+          # The runner-bundled CLI currently uses Python 3.14, whose parallel
+          # command loading can deadlock while importing the network module.
+          # Run the Azure command in Microsoft's versioned CLI container.
+          azcliversion: 2.76.0
+          inlineScript: |
+            used_priorities="$(az network nsg rule list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --nsg-name "$CUSTOMER_NSG_NAME" \
+              --query "[?direction=='Inbound'].priority" \
+              --output tsv)"
+            rule_priority="$CUSTOMER_TEMP_SSH_RULE_PRIORITY"
+            max_priority=$((CUSTOMER_TEMP_SSH_RULE_PRIORITY + 99))
+            while printf '%s\n' "$used_priorities" | grep -qx "$rule_priority"; do
+              rule_priority=$((rule_priority + 1))
+              test "$rule_priority" -le "$max_priority"
+            done
+            az network nsg rule create \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --nsg-name "$CUSTOMER_NSG_NAME" \
+              --name "$TEMP_SSH_RULE_NAME" \
+              --priority "$rule_priority" \
+              --direction Inbound \
+              --access Allow \
+              --protocol Tcp \
+              --source-address-prefixes "${RUNNER_IP}/32" \
+              --source-port-ranges '*' \
+              --destination-address-prefixes '*' \
+              --destination-port-ranges 22
 
       - name: Transfer ARM64 image to Customer VM
         run: |
@@ -109,6 +130,8 @@ jobs:
             "${CUSTOMER_VM_SSH_USERNAME}@${CUSTOMER_VM_HOST}" \
             "sudo docker load -i /tmp/customer-image-${DEPLOY_SHA}.tar.gz && \
              sudo rm -f /tmp/customer-image-${DEPLOY_SHA}.tar.gz && \
+             sudo docker run --rm --env-file /etc/assms/customer.env \
+               ${IMAGE_NAME}:${DEPLOY_SHA} --apply-auth-migration && \
              sudo docker rm -f assms-customer-service || true"
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -i ~/.ssh/customer_deploy_ed25519 \
@@ -130,8 +153,11 @@ jobs:
 
       - name: Remove temporary SSH rule
         if: always() && steps.azure_login.outcome == 'success'
-        run: |
-          az network nsg rule delete \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --nsg-name "$CUSTOMER_NSG_NAME" \
-            --name "$TEMP_SSH_RULE_NAME" || true
+        uses: azure/cli@v2
+        with:
+          azcliversion: 2.76.0
+          inlineScript: |
+            az network nsg rule delete \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --nsg-name "$CUSTOMER_NSG_NAME" \
+              --name "$TEMP_SSH_RULE_NAME" || true
