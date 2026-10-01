@@ -46,6 +46,9 @@ builder.Services.AddSingleton<IDbConnectionFactory>(new MySqlConnectionFactory(c
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<IAssetRepository, AssetRepository>();
 builder.Services.AddScoped<IStaffAccountRepository, StaffAccountRepository>();
+builder.Services.AddScoped<ITechnicianAccountRepository, StaffAccountRepository>();
+builder.Services.AddScoped<TechnicianAccountService>();
+builder.Services.AddHttpClient<IDispatchTechnicianVerifier, DispatchTechnicianVerifier>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<AuthenticationService>();
@@ -157,7 +160,7 @@ using (var scope = app.Services.CreateScope())
 
 app.Run();
 
-partial class Program
+public partial class Program
 {
     private const string FrontendCorsPolicy = "Frontend";
 }

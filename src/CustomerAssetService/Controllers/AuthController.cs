@@ -38,6 +38,7 @@ public sealed class AuthController : ControllerBase
     {
         id = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
         username = User.Identity?.Name,
-        role = User.FindFirst("role")?.Value
+        role = User.FindFirst("role")?.Value,
+        technicianId = User.FindFirst("technician_id")?.Value
     });
 }

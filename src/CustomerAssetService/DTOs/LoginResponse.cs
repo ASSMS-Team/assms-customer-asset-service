@@ -6,4 +6,4 @@ public sealed record LoginResponse(
     DateTime ExpiresAt,
     StaffIdentity Staff);
 
-public sealed record StaffIdentity(string Id, string Username, string Email, string Role);
+public sealed record StaffIdentity(string Id, string Username, string Email, string Role, string? TechnicianId = null);

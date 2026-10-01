@@ -29,13 +29,15 @@ public sealed class JwtTokenService : ITokenService
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         var expiresAt = now.AddMinutes(_options.LifetimeMinutes);
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, account.Id),
             new Claim(JwtRegisteredClaimNames.UniqueName, account.Username),
             new Claim("role", account.Role),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+        if (account.Role == StaffRoles.Technician && !string.IsNullOrWhiteSpace(account.TechnicianId))
+            claims.Add(new Claim("technician_id", account.TechnicianId));
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
         var token = new JwtSecurityToken(
             _options.Issuer,
@@ -49,6 +51,6 @@ public sealed class JwtTokenService : ITokenService
             new JwtSecurityTokenHandler().WriteToken(token),
             "Bearer",
             expiresAt,
-            new StaffIdentity(account.Id, account.Username, account.Email, account.Role));
+            new StaffIdentity(account.Id, account.Username, account.Email, account.Role, account.TechnicianId));
     }
 }

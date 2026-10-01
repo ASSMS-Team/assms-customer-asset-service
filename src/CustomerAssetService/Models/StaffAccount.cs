@@ -8,4 +8,5 @@ public sealed class StaffAccount
     public required string PasswordHash { get; init; }
     public required string Role { get; init; }
     public required string Status { get; init; }
+    public string? TechnicianId { get; init; }
 }

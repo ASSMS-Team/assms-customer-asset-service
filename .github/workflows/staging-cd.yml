@@ -132,7 +132,7 @@ jobs:
              sudo rm -f /tmp/customer-image-${DEPLOY_SHA}.tar.gz && \
              sudo docker run --rm --env-file /etc/assms/customer.env \
                ${IMAGE_NAME}:${DEPLOY_SHA} --apply-auth-migration && \
-             sudo docker rm -f assms-customer-service || true"
+             (sudo docker rm -f assms-customer-service || true)"
           ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -i ~/.ssh/customer_deploy_ed25519 \
             "${CUSTOMER_VM_SSH_USERNAME}@${CUSTOMER_VM_HOST}" \
