@@ -29,7 +29,11 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
             PasswordHash = reader.GetString(reader.GetOrdinal("password_hash")),
             Role = reader.GetString(reader.GetOrdinal("role")),
             Status = reader.GetString(reader.GetOrdinal("status")),
-            TechnicianId = reader.IsDBNull(reader.GetOrdinal("technician_id")) ? null : reader.GetString(reader.GetOrdinal("technician_id"))
+            // MySqlConnector exposes CHAR(36) UUID columns as Guid values.
+            // Convert the underlying value as for the staff ID above, rather
+            // than calling GetString (which throws for linked accounts).
+            TechnicianId = reader.IsDBNull(reader.GetOrdinal("technician_id"))
+                ? null : reader.GetValue(reader.GetOrdinal("technician_id")).ToString()
         };
     }
 
