@@ -98,8 +98,8 @@ public class AssetRepository : IAssetRepository
             Location = reader.GetString(locationOrdinal),
             Notes = reader.IsDBNull(notesOrdinal) ? null : reader.GetString(notesOrdinal),
             Status = reader.GetString(statusOrdinal),
-            CreatedAt = reader.GetDateTime(createdAtOrdinal),
-            UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
+            CreatedAt = DbDateTime.ReadUtc(reader, createdAtOrdinal),
+            UpdatedAt = DbDateTime.ReadUtc(reader, updatedAtOrdinal)
         };
     }
 
@@ -162,8 +162,8 @@ public class AssetRepository : IAssetRepository
                 Location = reader.GetString(locationOrdinal),
                 Notes = reader.IsDBNull(notesOrdinal) ? null : reader.GetString(notesOrdinal),
                 Status = reader.GetString(statusOrdinal),
-                CreatedAt = reader.GetDateTime(createdAtOrdinal),
-                UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
+                CreatedAt = DbDateTime.ReadUtc(reader, createdAtOrdinal),
+                UpdatedAt = DbDateTime.ReadUtc(reader, updatedAtOrdinal)
             });
         }
 

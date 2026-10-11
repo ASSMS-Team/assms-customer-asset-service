@@ -88,8 +88,8 @@ public class CustomerRepository : ICustomerRepository
             CustomerType = reader.GetString(customerTypeOrdinal),
             Email = reader.IsDBNull(emailOrdinal) ? null : reader.GetString(emailOrdinal),
             Status = reader.GetString(statusOrdinal),
-            CreatedAt = reader.GetDateTime(createdAtOrdinal),
-            UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
+            CreatedAt = DbDateTime.ReadUtc(reader, createdAtOrdinal),
+            UpdatedAt = DbDateTime.ReadUtc(reader, updatedAtOrdinal)
         };
     }
 
@@ -162,8 +162,8 @@ public class CustomerRepository : ICustomerRepository
                 CustomerType = reader.GetString(customerTypeOrdinal),
                 Email = reader.IsDBNull(emailOrdinal) ? null : reader.GetString(emailOrdinal),
                 Status = reader.GetString(statusOrdinal),
-                CreatedAt = reader.GetDateTime(createdAtOrdinal),
-                UpdatedAt = reader.GetDateTime(updatedAtOrdinal)
+                CreatedAt = DbDateTime.ReadUtc(reader, createdAtOrdinal),
+                UpdatedAt = DbDateTime.ReadUtc(reader, updatedAtOrdinal)
             });
         }
 
