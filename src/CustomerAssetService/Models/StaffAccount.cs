@@ -8,7 +8,7 @@ public sealed class StaffAccount
     public required string Email { get; init; }
     public required string PasswordHash { get; init; }
     public required string Role { get; init; }
-    public required string Status { get; init; }
+    public required string Status { get; set; }
     public string? TechnicianId { get; init; }
     public DateTime CreatedAt { get; init; }
     public string? CreatedBy { get; init; }

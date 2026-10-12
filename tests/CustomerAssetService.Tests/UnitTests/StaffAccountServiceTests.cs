@@ -269,6 +269,156 @@ public sealed class StaffAccountServiceTests
         Assert.Equal(404, problem.Status);
     }
 
+    [Fact]
+    public async Task DeactivatesActiveAccountSuccessfully()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "acc-target", FullName = "Agent Target", Username = "target.a", Email = "t@a.com", PasswordHash = "h", Role = "Agent", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+
+        var result = await service.DeactivateAsync("acc-target", "current-manager-id");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        Assert.Equal("INACTIVE", repo.Accounts.First(a => a.Id == "acc-target").Status);
+    }
+
+    [Fact]
+    public async Task Deactivate_SelfDeactivation_IsRejected()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "current-manager", FullName = "Me", Username = "me", Email = "me@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+
+        var result = await service.DeactivateAsync("current-manager", "current-manager");
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.SelfDeactivationNotAllowed, result.Error);
+    }
+
+    [Fact]
+    public async Task Deactivate_LastActiveManager_IsRejected()
+    {
+        var repo = new FakeRepo();
+        // Only 1 manager in repo
+        repo.Accounts.Add(new StaffAccount { Id = "other-manager", FullName = "Sole Manager", Username = "mgr", Email = "mgr@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+
+        var result = await service.DeactivateAsync("other-manager", "different-caller-id");
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.LastActiveManager, result.Error);
+    }
+
+    [Fact]
+    public async Task Deactivate_ManagerAllowedWhenOtherManagersExist()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "mgr-1", FullName = "Manager 1", Username = "mgr1", Email = "mgr1@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        repo.Accounts.Add(new StaffAccount { Id = "mgr-2", FullName = "Manager 2", Username = "mgr2", Email = "mgr2@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+
+        var result = await service.DeactivateAsync("mgr-2", "mgr-1");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task Deactivate_AlreadyInactive_IsIdempotent()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "acc-already-off", FullName = "Off", Username = "off", Email = "off@a.com", PasswordHash = "h", Role = "Agent", Status = "INACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+
+        var result = await service.DeactivateAsync("acc-already-off", "caller");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+    }
+
+    [Fact]
+    public async Task DeactivatedAccountCannotLogIn()
+    {
+        var repo = new FakeRepo();
+        var hasher = new PasswordHasher();
+        var rawPassword = "ValidPassword123!";
+        var account = new StaffAccount { Id = "acc-target", FullName = "Agent Target", Username = "target.login", Email = "t@login.com", PasswordHash = hasher.Hash(rawPassword), Role = "Agent", Status = "ACTIVE" };
+        repo.Accounts.Add(account);
+
+        var staffService = new StaffAccountService(repo, repo, hasher, new FakeVerifier(200));
+        var authService = new AuthenticationService(repo, hasher, new FakeTokenService());
+
+        // Login succeeds while active
+        var before = await authService.LoginAsync(new DTOs.LoginRequest { Identifier = "target.login", Password = rawPassword });
+        Assert.NotNull(before);
+
+        // Deactivate account
+        var deactResult = await staffService.DeactivateAsync("acc-target", "manager-caller");
+        Assert.True(deactResult.IsSuccess);
+
+        // Login fails immediately after deactivation
+        var after = await authService.LoginAsync(new DTOs.LoginRequest { Identifier = "target.login", Password = rawPassword });
+        Assert.Null(after);
+    }
+
+    [Fact]
+    public async Task Controller_Deactivate_ReturnsOkWithDeactivatedResponse()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "acc-1", FullName = "Agent 1", Username = "agent1", Email = "a1@a.com", PasswordHash = "h", Role = "Agent", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext
+            {
+                HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+            }
+        };
+
+        var actionResult = await controller.Deactivate("acc-1");
+        var ok = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(actionResult);
+        var response = Assert.IsType<StaffAccountResponse>(ok.Value);
+        Assert.Equal("INACTIVE", response.Status);
+    }
+
+    [Fact]
+    public async Task Controller_Deactivate_SelfDeactivation_ReturnsBadRequestProblem()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "current-mgr-sub", FullName = "Me", Username = "me", Email = "me@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        httpContext.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+            new System.Security.Claims.Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, "current-mgr-sub")
+        ]));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = httpContext }
+        };
+
+        var actionResult = await controller.Deactivate("current-mgr-sub");
+        var badRequest = Assert.IsType<Microsoft.AspNetCore.Mvc.BadRequestObjectResult>(actionResult);
+        var problem = Assert.IsType<Microsoft.AspNetCore.Mvc.ProblemDetails>(badRequest.Value);
+        Assert.Equal(400, problem.Status);
+    }
+
+    [Fact]
+    public async Task Controller_Deactivate_LastManager_ReturnsConflictProblem()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "sole-mgr", FullName = "Sole", Username = "sole", Email = "s@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        httpContext.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+            new System.Security.Claims.Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, "caller-id")
+        ]));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = httpContext }
+        };
+
+        var actionResult = await controller.Deactivate("sole-mgr");
+        var conflict = Assert.IsType<Microsoft.AspNetCore.Mvc.ConflictObjectResult>(actionResult);
+        var problem = Assert.IsType<Microsoft.AspNetCore.Mvc.ProblemDetails>(conflict.Value);
+        Assert.Equal(409, problem.Status);
+    }
+
     private sealed class FakeRepo : ITechnicianAccountRepository
     {
         public List<StaffAccount> Accounts { get; } = [];
@@ -289,6 +439,22 @@ public sealed class StaffAccountServiceTests
         public Task<StaffAccount?> FindByTechnicianIdAsync(string id) =>
             Task.FromResult(Accounts.FirstOrDefault(a => a.TechnicianId == id));
         public Task<bool> LinkTechnicianAsync(string accountId, string id) => Task.FromResult(true);
+        public Task<bool> DeactivateAsync(string id)
+        {
+            var acc = Accounts.FirstOrDefault(a => a.Id == id);
+            if (acc is null) return Task.FromResult(false);
+            acc.Status = "INACTIVE";
+            return Task.FromResult(true);
+        }
+        public Task<int> CountActiveManagersAsync() =>
+            Task.FromResult(Accounts.Count(a => a.Role == "Manager" && a.Status == "ACTIVE"));
+    }
+
+    private sealed class FakeTokenService : ITokenService
+    {
+        public DTOs.LoginResponse Issue(StaffAccount account) =>
+            new("fake-token", "Bearer", DateTime.UtcNow.AddHours(1),
+                new DTOs.StaffIdentity(account.Id, account.Username, account.Email, account.Role, account.TechnicianId));
     }
 
     private sealed class FakeVerifier(int status) : IDispatchTechnicianVerifier

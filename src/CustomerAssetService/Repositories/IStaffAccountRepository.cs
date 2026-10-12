@@ -10,5 +10,7 @@ public interface IStaffAccountRepository
     Task CreateAsync(StaffAccount account);
     Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync();
     Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null) => GetAllActiveAsync();
+    Task<bool> DeactivateAsync(string id) => Task.FromResult(false);
+    Task<int> CountActiveManagersAsync() => Task.FromResult(1);
 }
 

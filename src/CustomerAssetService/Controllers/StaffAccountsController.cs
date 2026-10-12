@@ -99,4 +99,45 @@ public sealed class StaffAccountsController : ControllerBase
             _ => Problem(statusCode: 500, title: "An unexpected error occurred.")
         };
     }
+
+    /// <summary>Deactivates a staff account. Only Managers may call this endpoint. Self-deactivation and deactivating the last active Manager are rejected.</summary>
+    /// <response code="200">The staff account was successfully deactivated.</response>
+    /// <response code="400">Self-deactivation is not permitted.</response>
+    /// <response code="404">The staff account was not found.</response>
+    /// <response code="409">The last active Manager account cannot be deactivated.</response>
+    [HttpPost("{id}/deactivate")]
+    [ProducesResponseType(typeof(StaffAccountResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Deactivate(string id)
+    {
+        var managerId = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? string.Empty;
+        var result = await _staffAccountService.DeactivateAsync(id, managerId);
+        if (result.IsSuccess)
+            return Ok(ToResponse(result.Value!));
+
+        return result.Error switch
+        {
+            ServiceError.NotFound => NotFound(new ProblemDetails
+            {
+                Status = 404,
+                Title = "Staff account not found.",
+                Detail = "The specified staff account does not exist."
+            }),
+            ServiceError.SelfDeactivationNotAllowed => BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "Self-deactivation is not permitted.",
+                Detail = "You cannot deactivate your own currently authenticated Manager account."
+            }),
+            ServiceError.LastActiveManager => Conflict(new ProblemDetails
+            {
+                Status = 409,
+                Title = "Last active Manager safeguard.",
+                Detail = "Cannot deactivate the last active Manager account. At least one active Manager must remain."
+            }),
+            _ => Problem(statusCode: 500, title: "An unexpected error occurred.")
+        };
+    }
 }

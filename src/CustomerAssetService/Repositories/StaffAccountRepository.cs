@@ -66,6 +66,25 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
         return Convert.ToBoolean(await command.ExecuteScalarAsync());
     }
 
+    public async Task<int> CountActiveManagersAsync()
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(1) FROM staff_accounts WHERE role = 'Manager' AND status = 'ACTIVE';";
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    public async Task<bool> DeactivateAsync(string id)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE staff_accounts SET status = 'INACTIVE' WHERE id = @id;";
+        command.Parameters.AddWithValue("@id", id);
+        return await command.ExecuteNonQueryAsync() > 0;
+    }
+
     public async Task CreateAsync(StaffAccount account)
     {
         await using var connection = _connectionFactory.CreateConnection();
