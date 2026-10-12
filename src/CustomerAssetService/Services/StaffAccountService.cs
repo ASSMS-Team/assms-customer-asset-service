@@ -92,6 +92,9 @@ public sealed class StaffAccountService
     public async Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() =>
         await _repository.GetAllActiveAsync();
 
+    public async Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null) =>
+        await _repository.GetAllAsync(status);
+
     public async Task<StaffAccount?> GetByIdAsync(string id) =>
         await _repository.FindByIdAsync(id);
 }
