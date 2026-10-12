@@ -12,7 +12,7 @@ public sealed class JwtTokenServiceTests
     public void LinkedTechnicianTokenContainsDispatchIdRatherThanStaffId()
     {
         var service = new JwtTokenService(Options.Create(new JwtOptions { SigningKey = "a-test-signing-key-that-is-at-least-32-bytes" }), TimeProvider.System);
-        var account = new StaffAccount { Id = "staff-id", Username = "separate.login", Email = "t@example.com", PasswordHash = "hidden", Role = StaffRoles.Technician, Status = "ACTIVE", TechnicianId = Guid.NewGuid().ToString() };
+        var account = new StaffAccount { Id = "staff-id", FullName = "Test Tech", Username = "separate.login", Email = "t@example.com", PasswordHash = "hidden", Role = StaffRoles.Technician, Status = "ACTIVE", TechnicianId = Guid.NewGuid().ToString() };
         var response = service.Issue(account);
         var token = new JwtSecurityTokenHandler().ReadJwtToken(response.AccessToken);
         Assert.Equal(account.Id, token.Subject);
@@ -32,7 +32,7 @@ public sealed class JwtTokenServiceTests
         var service = new JwtTokenService(options, TimeProvider.System);
         var account = new StaffAccount
         {
-            Id = "staff-1", Username = "dispatcher", Email = "d@example.com",
+            Id = "staff-1", FullName = "Test Dispatcher", Username = "dispatcher", Email = "d@example.com",
             PasswordHash = "not-returned", Role = StaffRoles.Dispatcher, Status = "ACTIVE"
         };
 

@@ -18,7 +18,7 @@ public sealed class TechnicianAccountService(ITechnicianAccountRepository reposi
             await repository.FindByIdentifierAsync(request.Email) is not null) return null;
         var account = new StaffAccount
         {
-            Id = Guid.NewGuid().ToString(), Username = request.Username.Trim(), Email = request.Email.Trim(),
+            Id = Guid.NewGuid().ToString(), FullName = request.Username.Trim(), Username = request.Username.Trim(), Email = request.Email.Trim(),
             PasswordHash = hasher.Hash(request.Password), Role = StaffRoles.Technician, Status = "ACTIVE",
             TechnicianId = technicianId
         };

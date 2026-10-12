@@ -50,6 +50,7 @@ public sealed class BootstrapManagerSeeder
         await _repository.CreateAsync(new StaffAccount
         {
             Id = Guid.NewGuid().ToString(),
+            FullName = "System Administrator",
             Username = username.Trim(),
             Email = email.Trim(),
             PasswordHash = _passwordHasher.Hash(password),
@@ -78,7 +79,7 @@ public sealed class BootstrapManagerSeeder
             if (await _repository.FindByIdentifierAsync(email) is not null) continue;
             await _repository.CreateAsync(new StaffAccount
             {
-                Id = Guid.NewGuid().ToString(), Username = username, Email = email,
+                Id = Guid.NewGuid().ToString(), FullName = username, Username = username, Email = email,
                 PasswordHash = _passwordHasher.Hash(password), Role = role, Status = "ACTIVE"
             });
             _logger.LogInformation("Approved {Role} seed StaffAccount created for {Username}.", role, username);

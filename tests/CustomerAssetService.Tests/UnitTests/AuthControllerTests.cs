@@ -28,7 +28,7 @@ public sealed class AuthControllerTests
         var hasher = new PasswordHasher();
         var account = new StaffAccount
         {
-            Id = "staff-1", Username = "manager", Email = "manager@example.com",
+            Id = "staff-1", FullName = "Test Manager", Username = "manager", Email = "manager@example.com",
             PasswordHash = hasher.Hash("Valid!234"), Role = StaffRoles.Manager, Status = "ACTIVE"
         };
         var controller = new AuthController(Service(account, hasher));
@@ -47,8 +47,10 @@ public sealed class AuthControllerTests
     private sealed class FakeRepository(StaffAccount? account) : IStaffAccountRepository
     {
         public Task<StaffAccount?> FindByIdentifierAsync(string identifier) => Task.FromResult(account);
+        public Task<StaffAccount?> FindByIdAsync(string id) => Task.FromResult(account?.Id == id ? account : null);
         public Task<bool> AnyManagerAsync() => Task.FromResult(false);
         public Task CreateAsync(StaffAccount value) => Task.CompletedTask;
+        public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() => Task.FromResult<IReadOnlyList<StaffAccount>>(account is null ? [] : [account]);
     }
 
     private sealed class FakeTokenService : ITokenService

@@ -48,6 +48,7 @@ public sealed class AuthenticationServiceTests
     private StaffAccount Account(string status) => new()
     {
         Id = Guid.NewGuid().ToString(),
+        FullName = "Test Manager",
         Username = "manager",
         Email = "manager@example.com",
         PasswordHash = _hasher.Hash("Valid!234"),
@@ -58,8 +59,10 @@ public sealed class AuthenticationServiceTests
     private sealed class FakeStaffRepository(StaffAccount? account) : IStaffAccountRepository
     {
         public Task<StaffAccount?> FindByIdentifierAsync(string identifier) => Task.FromResult(account);
+        public Task<StaffAccount?> FindByIdAsync(string id) => Task.FromResult(account?.Id == id ? account : null);
         public Task<bool> AnyManagerAsync() => Task.FromResult(account?.Role == StaffRoles.Manager);
         public Task CreateAsync(StaffAccount value) => Task.CompletedTask;
+        public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() => Task.FromResult<IReadOnlyList<StaffAccount>>(account is null ? [] : [account]);
     }
 
     private sealed class RecordingTokenService : ITokenService
