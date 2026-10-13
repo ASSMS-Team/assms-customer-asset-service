@@ -21,6 +21,8 @@
   <ItemGroup>
     <Content Include="..\..\database\migrations\V04__create_staff_accounts.sql" Link="migrations\V04__create_staff_accounts.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\database\migrations\V05__link_technician_accounts.sql" Link="migrations\V05__link_technician_accounts.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\database\migrations\V06__add_staff_audit_columns.sql" Link="migrations\V06__add_staff_audit_columns.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\database\migrations\V07__add_dispatch_sync_status.sql" Link="migrations\V07__add_dispatch_sync_status.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

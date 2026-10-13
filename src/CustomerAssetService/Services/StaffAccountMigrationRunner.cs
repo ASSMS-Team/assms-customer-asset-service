@@ -13,6 +13,7 @@ public sealed class StaffAccountMigrationRunner
         await ApplyMigrationAsync("V04__create_staff_accounts.sql");
         await ApplyMigrationAsync("V05__link_technician_accounts.sql");
         await ApplyMigrationAsync("V06__add_staff_audit_columns.sql");
+        await ApplyMigrationAsync("V07__add_dispatch_sync_status.sql");
     }
 
     private async Task ApplyMigrationAsync(string migrationName)
@@ -76,6 +77,17 @@ public sealed class StaffAccountMigrationRunner
             {
                 await using var add = connection.CreateCommand();
                 add.CommandText = "ALTER TABLE staff_accounts ADD COLUMN created_by CHAR(36) NULL;";
+                await add.ExecuteNonQueryAsync();
+            }
+        }
+        else if (migrationName == "V07__add_dispatch_sync_status.sql")
+        {
+            await using var exists = connection.CreateCommand();
+            exists.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'staff_accounts' AND column_name = 'dispatch_sync_status';";
+            if (Convert.ToInt32(await exists.ExecuteScalarAsync()) == 0)
+            {
+                await using var add = connection.CreateCommand();
+                add.CommandText = "ALTER TABLE staff_accounts ADD COLUMN dispatch_sync_status VARCHAR(50) NULL;";
                 await add.ExecuteNonQueryAsync();
             }
         }

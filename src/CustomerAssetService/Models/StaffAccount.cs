@@ -12,5 +12,6 @@ public sealed class StaffAccount
     public string? TechnicianId { get; init; }
     public DateTime CreatedAt { get; init; }
     public string? CreatedBy { get; init; }
+    public string? DispatchSyncStatus { get; set; }
 }
 

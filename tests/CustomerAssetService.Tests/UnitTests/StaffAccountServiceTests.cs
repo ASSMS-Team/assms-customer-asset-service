@@ -439,6 +439,91 @@ public sealed class StaffAccountServiceTests
         Assert.Equal(409, problem.Status);
     }
 
+    [Fact]
+    public async Task Deactivate_TechnicianWithOpenAssignments_FailsWithConflict()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "tech-acc", FullName = "Tech Open", Username = "tech.open", Email = "to@a.com", PasswordHash = "h", Role = "Technician", Status = "ACTIVE", TechnicianId = "tech-uuid-1" });
+        var verifier = new FakeVerifier(200, DispatchDeactivationOutcome.HasOpenAssignments);
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), verifier);
+
+        var result = await service.DeactivateAsync("tech-acc", "mgr-caller");
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ServiceError.TechnicianHasOpenAssignments, result.Error);
+        Assert.Equal("ACTIVE", repo.Accounts.First(a => a.Id == "tech-acc").Status);
+    }
+
+    [Fact]
+    public async Task Deactivate_TechnicianWithoutOpenAssignments_SucceedsAndMarksSynchronized()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "tech-acc-2", FullName = "Tech Clear", Username = "tech.clear", Email = "tc@a.com", PasswordHash = "h", Role = "Technician", Status = "ACTIVE", TechnicianId = "tech-uuid-2" });
+        var verifier = new FakeVerifier(200, DispatchDeactivationOutcome.Success);
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), verifier);
+
+        var result = await service.DeactivateAsync("tech-acc-2", "mgr-caller");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        Assert.Equal("SYNCHRONIZED", result.Value!.DispatchSyncStatus);
+        Assert.Equal("INACTIVE", repo.Accounts.First(a => a.Id == "tech-acc-2").Status);
+        Assert.Equal("SYNCHRONIZED", repo.Accounts.First(a => a.Id == "tech-acc-2").DispatchSyncStatus);
+    }
+
+    [Fact]
+    public async Task Deactivate_TechnicianDuringDispatchOutage_RevokesStaffAccessAndExposesPendingRetry()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "tech-acc-3", FullName = "Tech Outage", Username = "tech.outage", Email = "tout@a.com", PasswordHash = "h", Role = "Technician", Status = "ACTIVE", TechnicianId = "tech-uuid-3" });
+        var verifier = new FakeVerifier(200, DispatchDeactivationOutcome.Unavailable);
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), verifier);
+
+        var result = await service.DeactivateAsync("tech-acc-3", "mgr-caller");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        Assert.Equal("PENDING_RETRY", result.Value!.DispatchSyncStatus);
+        Assert.Equal("INACTIVE", repo.Accounts.First(a => a.Id == "tech-acc-3").Status);
+        Assert.Equal("PENDING_RETRY", repo.Accounts.First(a => a.Id == "tech-acc-3").DispatchSyncStatus);
+    }
+
+    [Fact]
+    public async Task Deactivate_TechnicianRecovery_SynchronizesWhenDispatchRestored()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "tech-acc-4", FullName = "Tech Recover", Username = "tech.rec", Email = "trec@a.com", PasswordHash = "h", Role = "Technician", Status = "INACTIVE", TechnicianId = "tech-uuid-4", DispatchSyncStatus = "PENDING_RETRY" });
+        var verifier = new FakeVerifier(200, DispatchDeactivationOutcome.Success);
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), verifier);
+
+        var result = await service.DeactivateAsync("tech-acc-4", "mgr-caller");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("INACTIVE", result.Value!.Status);
+        Assert.Equal("SYNCHRONIZED", result.Value!.DispatchSyncStatus);
+        Assert.Equal("SYNCHRONIZED", repo.Accounts.First(a => a.Id == "tech-acc-4").DispatchSyncStatus);
+    }
+
+    [Fact]
+    public async Task Controller_Deactivate_TechnicianWithOpenAssignments_ReturnsConflictProblem()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "tech-open", FullName = "Tech Open", Username = "to", Email = "to@a.com", PasswordHash = "h", Role = "Technician", Status = "ACTIVE", TechnicianId = "tech-open-id" });
+        var verifier = new FakeVerifier(200, DispatchDeactivationOutcome.HasOpenAssignments);
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), verifier);
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        httpContext.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+            new System.Security.Claims.Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, "caller-id")
+        ]));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service)
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = httpContext }
+        };
+
+        var actionResult = await controller.Deactivate("tech-open");
+        var conflict = Assert.IsType<Microsoft.AspNetCore.Mvc.ConflictObjectResult>(actionResult);
+        var problem = Assert.IsType<Microsoft.AspNetCore.Mvc.ProblemDetails>(conflict.Value);
+        Assert.Equal(409, problem.Status);
+        Assert.Equal("Technician has open assignments.", problem.Title);
+        Assert.Contains("open jobs", problem.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class FakeRepo : ITechnicianAccountRepository
     {
         public List<StaffAccount> Accounts { get; } = [];
@@ -460,13 +545,18 @@ public sealed class StaffAccountServiceTests
             Task.FromResult(Accounts.FirstOrDefault(a => a.TechnicianId == id));
         public Task<bool> LinkTechnicianAsync(string accountId, string id) => Task.FromResult(true);
         private readonly object _lock = new();
-        public Task<DeactivateStaffAccountResult> DeactivateAsync(string id)
+        public Task<DeactivateStaffAccountResult> DeactivateAsync(string id) => DeactivateAsync(id, null);
+        public Task<DeactivateStaffAccountResult> DeactivateAsync(string id, string? dispatchSyncStatus)
         {
             lock (_lock)
             {
                 var acc = Accounts.FirstOrDefault(a => a.Id == id);
                 if (acc is null) return Task.FromResult(DeactivateStaffAccountResult.NotFound);
-                if (acc.Status == "INACTIVE") return Task.FromResult(DeactivateStaffAccountResult.Success);
+                if (acc.Status == "INACTIVE")
+                {
+                    if (dispatchSyncStatus != null) acc.DispatchSyncStatus = dispatchSyncStatus;
+                    return Task.FromResult(DeactivateStaffAccountResult.Success);
+                }
                 if (acc.Role == "Manager")
                 {
                     var activeManagers = Accounts.Count(a => a.Role == "Manager" && a.Status == "ACTIVE");
@@ -474,7 +564,17 @@ public sealed class StaffAccountServiceTests
                         return Task.FromResult(DeactivateStaffAccountResult.LastActiveManager);
                 }
                 acc.Status = "INACTIVE";
+                acc.DispatchSyncStatus = dispatchSyncStatus;
                 return Task.FromResult(DeactivateStaffAccountResult.Success);
+            }
+        }
+        public Task UpdateDispatchSyncStatusAsync(string id, string status)
+        {
+            lock (_lock)
+            {
+                var acc = Accounts.FirstOrDefault(a => a.Id == id);
+                if (acc != null) acc.DispatchSyncStatus = status;
+                return Task.CompletedTask;
             }
         }
         public Task<int> CountActiveManagersAsync() =>
@@ -488,9 +588,11 @@ public sealed class StaffAccountServiceTests
                 new DTOs.StaffIdentity(account.Id, account.Username, account.Email, account.Role, account.TechnicianId));
     }
 
-    private sealed class FakeVerifier(int status) : IDispatchTechnicianVerifier
+    private sealed class FakeVerifier(int status, DispatchDeactivationOutcome deactivationOutcome = DispatchDeactivationOutcome.Success) : IDispatchTechnicianVerifier
     {
         public Task<int> VerifyAsync(string id, string authorization, CancellationToken cancellationToken) =>
             Task.FromResult(status);
+        public Task<DispatchDeactivationOutcome> DeactivateTechnicianAsync(string id, string authorization, CancellationToken cancellationToken) =>
+            Task.FromResult(deactivationOutcome);
     }
 }

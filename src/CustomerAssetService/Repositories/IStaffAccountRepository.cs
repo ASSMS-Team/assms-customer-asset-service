@@ -18,6 +18,8 @@ public interface IStaffAccountRepository
     Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync();
     Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null) => GetAllActiveAsync();
     Task<DeactivateStaffAccountResult> DeactivateAsync(string id) => Task.FromResult(DeactivateStaffAccountResult.NotFound);
+    Task<DeactivateStaffAccountResult> DeactivateAsync(string id, string? dispatchSyncStatus) => DeactivateAsync(id);
+    Task UpdateDispatchSyncStatusAsync(string id, string status) => Task.CompletedTask;
     Task<int> CountActiveManagersAsync() => Task.FromResult(1);
 }
 
