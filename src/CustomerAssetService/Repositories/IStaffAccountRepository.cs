@@ -9,5 +9,6 @@ public interface IStaffAccountRepository
     Task<bool> AnyManagerAsync();
     Task CreateAsync(StaffAccount account);
     Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync();
+    Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null) => GetAllActiveAsync();
 }
 

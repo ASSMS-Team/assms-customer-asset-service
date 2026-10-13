@@ -23,14 +23,28 @@ public sealed class StaffAccountsController : ControllerBase
             account.Role, account.Status, account.TechnicianId,
             account.CreatedAt, account.CreatedBy);
 
-    /// <summary>Returns all active staff accounts. Passwords and hashes are never returned.</summary>
-    /// <response code="200">A list of active staff accounts.</response>
+    /// <summary>Returns registered staff accounts with optional status filter. Passwords and hashes are never returned.</summary>
+    /// <response code="200">A list of registered staff accounts.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<StaffAccountResponse>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] string? status = null)
     {
-        var accounts = await _staffAccountService.GetAllActiveAsync();
+        var accounts = await _staffAccountService.GetAllAsync(status);
         return Ok(accounts.Select(ToResponse));
+    }
+
+    /// <summary>Returns a single registered staff account by ID. Passwords and hashes are never returned.</summary>
+    /// <response code="200">The registered staff account details.</response>
+    /// <response code="404">The staff account was not found.</response>
+    [HttpGet("{id}")]
+    [ProducesResponseType(typeof(StaffAccountResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(string id)
+    {
+        var account = await _staffAccountService.GetByIdAsync(id);
+        return account is null
+            ? NotFound(new ProblemDetails { Status = 404, Title = "Staff account not found." })
+            : Ok(ToResponse(account));
     }
 
     /// <summary>Creates a new staff account with the specified role. Only Managers may call this endpoint.</summary>
@@ -50,7 +64,7 @@ public sealed class StaffAccountsController : ControllerBase
 
         var result = await _staffAccountService.CreateAsync(request, managerId, authorization, cancellationToken);
         if (result.IsSuccess)
-            return CreatedAtAction(nameof(GetAll), ToResponse(result.Value!));
+            return CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, ToResponse(result.Value!));
 
         return result.Error switch
         {

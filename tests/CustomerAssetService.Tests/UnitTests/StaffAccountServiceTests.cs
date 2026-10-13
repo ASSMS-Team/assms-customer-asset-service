@@ -217,6 +217,58 @@ public sealed class StaffAccountServiceTests
         Assert.Equal(503, objectResult.StatusCode);
     }
 
+    [Fact]
+    public async Task Controller_GetAll_WithStatusFilter_FiltersCorrectly()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "1", FullName = "Active", Username = "u1", Email = "e1@a.com", PasswordHash = "h", Role = "Agent", Status = "ACTIVE" });
+        repo.Accounts.Add(new StaffAccount { Id = "2", FullName = "Inactive", Username = "u2", Email = "e2@a.com", PasswordHash = "h", Role = "Dispatcher", Status = "INACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service);
+
+        var all = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.GetAll(null));
+        var allList = Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<StaffAccountResponse>>(all.Value);
+        Assert.Equal(2, allList.Count());
+
+        var activeOnly = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.GetAll("ACTIVE"));
+        var activeList = Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<StaffAccountResponse>>(activeOnly.Value);
+        Assert.Single(activeList);
+        Assert.Equal("ACTIVE", activeList.First().Status);
+
+        var inactiveOnly = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.GetAll("INACTIVE"));
+        var inactiveList = Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<StaffAccountResponse>>(inactiveOnly.Value);
+        Assert.Single(inactiveList);
+        Assert.Equal("INACTIVE", inactiveList.First().Status);
+    }
+
+    [Fact]
+    public async Task Controller_GetById_Existing_ReturnsOkWithResponse()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "acc-99", FullName = "Test Person", Username = "person", Email = "p@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service);
+
+        var actionResult = await controller.GetById("acc-99");
+        var ok = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(actionResult);
+        var response = Assert.IsType<StaffAccountResponse>(ok.Value);
+        Assert.Equal("acc-99", response.Id);
+        Assert.Equal("person", response.Username);
+    }
+
+    [Fact]
+    public async Task Controller_GetById_NonExistent_ReturnsNotFoundProblem()
+    {
+        var repo = new FakeRepo();
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+        var controller = new CustomerAssetService.Controllers.StaffAccountsController(service);
+
+        var actionResult = await controller.GetById("unknown-id");
+        var notFound = Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundObjectResult>(actionResult);
+        var problem = Assert.IsType<Microsoft.AspNetCore.Mvc.ProblemDetails>(notFound.Value);
+        Assert.Equal(404, problem.Status);
+    }
+
     private sealed class FakeRepo : ITechnicianAccountRepository
     {
         public List<StaffAccount> Accounts { get; } = [];
@@ -230,6 +282,10 @@ public sealed class StaffAccountServiceTests
         public Task CreateAsync(StaffAccount account) { Accounts.Add(account); return Task.CompletedTask; }
         public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() =>
             Task.FromResult<IReadOnlyList<StaffAccount>>(Accounts.Where(a => a.Status == "ACTIVE").ToList());
+        public Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null) =>
+            Task.FromResult<IReadOnlyList<StaffAccount>>(string.IsNullOrWhiteSpace(status)
+                ? Accounts.ToList()
+                : Accounts.Where(a => a.Status.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase)).ToList());
         public Task<StaffAccount?> FindByTechnicianIdAsync(string id) =>
             Task.FromResult(Accounts.FirstOrDefault(a => a.TechnicianId == id));
         public Task<bool> LinkTechnicianAsync(string accountId, string id) => Task.FromResult(true);

@@ -90,12 +90,22 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    public async Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync()
+    public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() => GetAllAsync("ACTIVE");
+
+    public async Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT {SelectColumns} FROM staff_accounts WHERE status = 'ACTIVE' ORDER BY created_at DESC;";
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            command.CommandText = $"SELECT {SelectColumns} FROM staff_accounts ORDER BY created_at DESC;";
+        }
+        else
+        {
+            command.CommandText = $"SELECT {SelectColumns} FROM staff_accounts WHERE status = @status ORDER BY created_at DESC;";
+            command.Parameters.AddWithValue("@status", status.Trim().ToUpperInvariant());
+        }
         await using var reader = await command.ExecuteReaderAsync();
         var accounts = new List<StaffAccount>();
         while (await reader.ReadAsync()) accounts.Add(Map(reader));
