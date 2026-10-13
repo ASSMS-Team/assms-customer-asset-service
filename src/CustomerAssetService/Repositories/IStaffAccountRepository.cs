@@ -2,6 +2,13 @@ using CustomerAssetService.Models;
 
 namespace CustomerAssetService.Repositories;
 
+public enum DeactivateStaffAccountResult
+{
+    Success,
+    NotFound,
+    LastActiveManager
+}
+
 public interface IStaffAccountRepository
 {
     Task<StaffAccount?> FindByIdentifierAsync(string identifier);
@@ -10,7 +17,7 @@ public interface IStaffAccountRepository
     Task CreateAsync(StaffAccount account);
     Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync();
     Task<IReadOnlyList<StaffAccount>> GetAllAsync(string? status = null) => GetAllActiveAsync();
-    Task<bool> DeactivateAsync(string id) => Task.FromResult(false);
+    Task<DeactivateStaffAccountResult> DeactivateAsync(string id) => Task.FromResult(DeactivateStaffAccountResult.NotFound);
     Task<int> CountActiveManagersAsync() => Task.FromResult(1);
 }
 

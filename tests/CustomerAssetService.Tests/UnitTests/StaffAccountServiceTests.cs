@@ -321,6 +321,26 @@ public sealed class StaffAccountServiceTests
     }
 
     [Fact]
+    public async Task Deactivate_ConcurrentLastManagerDeactivation_RejectsAtLeastOneAndPreservesOneActiveManager()
+    {
+        var repo = new FakeRepo();
+        repo.Accounts.Add(new StaffAccount { Id = "mgr-1", FullName = "Manager 1", Username = "mgr1", Email = "mgr1@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        repo.Accounts.Add(new StaffAccount { Id = "mgr-2", FullName = "Manager 2", Username = "mgr2", Email = "mgr2@a.com", PasswordHash = "h", Role = "Manager", Status = "ACTIVE" });
+        var service = new StaffAccountService(repo, repo, new PasswordHasher(), new FakeVerifier(200));
+
+        var task1 = service.DeactivateAsync("mgr-2", "mgr-1");
+        var task2 = service.DeactivateAsync("mgr-1", "mgr-2");
+        var results = await Task.WhenAll(task1, task2);
+
+        var successCount = results.Count(r => r.IsSuccess);
+        var failureCount = results.Count(r => !r.IsSuccess && r.Error == ServiceError.LastActiveManager);
+
+        Assert.Equal(1, successCount);
+        Assert.Equal(1, failureCount);
+        Assert.Equal(1, repo.Accounts.Count(a => a.Role == "Manager" && a.Status == "ACTIVE"));
+    }
+
+    [Fact]
     public async Task Deactivate_AlreadyInactive_IsIdempotent()
     {
         var repo = new FakeRepo();
@@ -439,12 +459,23 @@ public sealed class StaffAccountServiceTests
         public Task<StaffAccount?> FindByTechnicianIdAsync(string id) =>
             Task.FromResult(Accounts.FirstOrDefault(a => a.TechnicianId == id));
         public Task<bool> LinkTechnicianAsync(string accountId, string id) => Task.FromResult(true);
-        public Task<bool> DeactivateAsync(string id)
+        private readonly object _lock = new();
+        public Task<DeactivateStaffAccountResult> DeactivateAsync(string id)
         {
-            var acc = Accounts.FirstOrDefault(a => a.Id == id);
-            if (acc is null) return Task.FromResult(false);
-            acc.Status = "INACTIVE";
-            return Task.FromResult(true);
+            lock (_lock)
+            {
+                var acc = Accounts.FirstOrDefault(a => a.Id == id);
+                if (acc is null) return Task.FromResult(DeactivateStaffAccountResult.NotFound);
+                if (acc.Status == "INACTIVE") return Task.FromResult(DeactivateStaffAccountResult.Success);
+                if (acc.Role == "Manager")
+                {
+                    var activeManagers = Accounts.Count(a => a.Role == "Manager" && a.Status == "ACTIVE");
+                    if (activeManagers <= 1)
+                        return Task.FromResult(DeactivateStaffAccountResult.LastActiveManager);
+                }
+                acc.Status = "INACTIVE";
+                return Task.FromResult(DeactivateStaffAccountResult.Success);
+            }
         }
         public Task<int> CountActiveManagersAsync() =>
             Task.FromResult(Accounts.Count(a => a.Role == "Manager" && a.Status == "ACTIVE"));

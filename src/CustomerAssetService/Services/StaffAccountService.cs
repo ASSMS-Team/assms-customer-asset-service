@@ -120,9 +120,12 @@ public sealed class StaffAccountService
                 return Result<StaffAccount>.Failure(ServiceError.LastActiveManager);
         }
 
-        var updated = await _repository.DeactivateAsync(accountId);
-        if (!updated)
+        var deactivationResult = await _repository.DeactivateAsync(accountId);
+        if (deactivationResult == DeactivateStaffAccountResult.NotFound)
             return Result<StaffAccount>.Failure(ServiceError.NotFound);
+
+        if (deactivationResult == DeactivateStaffAccountResult.LastActiveManager)
+            return Result<StaffAccount>.Failure(ServiceError.LastActiveManager);
 
         account.Status = "INACTIVE";
         return Result<StaffAccount>.Success(account);

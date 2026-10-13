@@ -75,14 +75,84 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    public async Task<bool> DeactivateAsync(string id)
+    public async Task<DeactivateStaffAccountResult> DeactivateAsync(string id)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE staff_accounts SET status = 'INACTIVE' WHERE id = @id;";
-        command.Parameters.AddWithValue("@id", id);
-        return await command.ExecuteNonQueryAsync() > 0;
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+
+        try
+        {
+            await using var findCmd = connection.CreateCommand();
+            findCmd.Transaction = transaction;
+            findCmd.CommandText = "SELECT role, status FROM staff_accounts WHERE id = @id LIMIT 1;";
+            findCmd.Parameters.AddWithValue("@id", id);
+
+            string? role = null;
+            string? status = null;
+            await using (var reader = await findCmd.ExecuteReaderAsync())
+            {
+                if (!await reader.ReadAsync())
+                    return DeactivateStaffAccountResult.NotFound;
+
+                role = reader.GetString(reader.GetOrdinal("role"));
+                status = reader.GetString(reader.GetOrdinal("status"));
+            }
+
+            if (string.Equals(status, "INACTIVE", StringComparison.OrdinalIgnoreCase))
+            {
+                return DeactivateStaffAccountResult.Success;
+            }
+
+            if (string.Equals(role, "Manager", StringComparison.OrdinalIgnoreCase))
+            {
+                // Lock all active manager rows using FOR UPDATE to prevent race conditions during concurrent deactivations
+                await using var countCmd = connection.CreateCommand();
+                countCmd.Transaction = transaction;
+                countCmd.CommandText = "SELECT id FROM staff_accounts WHERE role = 'Manager' AND status = 'ACTIVE' FOR UPDATE;";
+
+                var activeManagerIds = new List<string>();
+                await using (var reader = await countCmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var mId = reader.GetValue(0)?.ToString();
+                        if (!string.IsNullOrEmpty(mId))
+                            activeManagerIds.Add(mId);
+                    }
+                }
+
+                if (!activeManagerIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+                {
+                    return DeactivateStaffAccountResult.Success;
+                }
+
+                if (activeManagerIds.Count <= 1)
+                {
+                    await transaction.RollbackAsync();
+                    return DeactivateStaffAccountResult.LastActiveManager;
+                }
+            }
+
+            await using var updateCmd = connection.CreateCommand();
+            updateCmd.Transaction = transaction;
+            updateCmd.CommandText = "UPDATE staff_accounts SET status = 'INACTIVE' WHERE id = @id;";
+            updateCmd.Parameters.AddWithValue("@id", id);
+            var affected = await updateCmd.ExecuteNonQueryAsync();
+
+            await transaction.CommitAsync();
+            return affected > 0 ? DeactivateStaffAccountResult.Success : DeactivateStaffAccountResult.NotFound;
+        }
+        catch (MySqlConnector.MySqlException ex) when (ex.Number == 1213)
+        {
+            await transaction.RollbackAsync();
+            return await DeactivateAsync(id);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     public async Task CreateAsync(StaffAccount account)
