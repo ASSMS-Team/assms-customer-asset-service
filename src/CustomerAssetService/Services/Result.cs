@@ -27,7 +27,11 @@ public enum ServiceError
     // The referenced Dispatch technician was not found.
     TechnicianNotFound = 10,
     // Could not reach the Dispatch service to verify the technician.
-    DispatchUnavailable = 11
+    DispatchUnavailable = 11,
+    // Self-deactivation safeguard: A Manager cannot deactivate their own currently authenticated account.
+    SelfDeactivationNotAllowed = 12,
+    // Last-Manager safeguard: The system must not allow deactivation of the last active Manager account.
+    LastActiveManager = 13
 }
 
 // Expected failures are returned, not thrown, so the controller's branching is

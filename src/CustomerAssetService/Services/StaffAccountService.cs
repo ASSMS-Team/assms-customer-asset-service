@@ -97,4 +97,34 @@ public sealed class StaffAccountService
 
     public async Task<StaffAccount?> GetByIdAsync(string id) =>
         await _repository.FindByIdAsync(id);
+
+    public async Task<Result<StaffAccount>> DeactivateAsync(string accountId, string currentManagerId)
+    {
+        var account = await _repository.FindByIdAsync(accountId);
+        if (account is null)
+            return Result<StaffAccount>.Failure(ServiceError.NotFound);
+
+        // Self-deactivation safeguard: A Manager cannot deactivate their own currently authenticated account
+        if (string.Equals(account.Id, currentManagerId, StringComparison.OrdinalIgnoreCase))
+            return Result<StaffAccount>.Failure(ServiceError.SelfDeactivationNotAllowed);
+
+        // Repeated request safety: Already inactive is handled idempotently without side effects
+        if (string.Equals(account.Status, "INACTIVE", StringComparison.OrdinalIgnoreCase))
+            return Result<StaffAccount>.Success(account);
+
+        // Last-Manager safeguard: The system must not allow deactivation of the last active Manager account
+        if (string.Equals(account.Role, StaffRoles.Manager, StringComparison.OrdinalIgnoreCase))
+        {
+            var activeManagers = await _repository.CountActiveManagersAsync();
+            if (activeManagers <= 1)
+                return Result<StaffAccount>.Failure(ServiceError.LastActiveManager);
+        }
+
+        var updated = await _repository.DeactivateAsync(accountId);
+        if (!updated)
+            return Result<StaffAccount>.Failure(ServiceError.NotFound);
+
+        account.Status = "INACTIVE";
+        return Result<StaffAccount>.Success(account);
+    }
 }
