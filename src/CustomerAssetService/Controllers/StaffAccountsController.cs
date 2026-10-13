@@ -1,0 +1,88 @@
+using System.IdentityModel.Tokens.Jwt;
+
+using CustomerAssetService.DTOs;
+using CustomerAssetService.Models;
+using CustomerAssetService.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace CustomerAssetService.Controllers;
+
+/// <summary>Manager-controlled provisioning of staff accounts for all four supported roles.</summary>
+[ApiController, Route("api/staff-accounts"), Produces("application/json")]
+[Authorize(Roles = "Manager")]
+public sealed class StaffAccountsController : ControllerBase
+{
+    private readonly StaffAccountService _staffAccountService;
+
+    public StaffAccountsController(StaffAccountService staffAccountService) =>
+        _staffAccountService = staffAccountService;
+
+    private static StaffAccountResponse ToResponse(StaffAccount account) =>
+        new(account.Id, account.FullName, account.Username, account.Email,
+            account.Role, account.Status, account.TechnicianId,
+            account.CreatedAt, account.CreatedBy);
+
+    /// <summary>Returns all active staff accounts. Passwords and hashes are never returned.</summary>
+    /// <response code="200">A list of active staff accounts.</response>
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<StaffAccountResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll()
+    {
+        var accounts = await _staffAccountService.GetAllActiveAsync();
+        return Ok(accounts.Select(ToResponse));
+    }
+
+    /// <summary>Creates a new staff account with the specified role. Only Managers may call this endpoint.</summary>
+    /// <response code="201">The staff account was created successfully.</response>
+    /// <response code="400">Request validation failed.</response>
+    /// <response code="409">The username, email or technician link is already taken.</response>
+    /// <response code="503">The Dispatch service could not be reached to verify the technician.</response>
+    [HttpPost]
+    [ProducesResponseType(typeof(StaffAccountResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> Create([FromBody] CreateStaffAccountRequest request, CancellationToken cancellationToken)
+    {
+        var managerId = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? string.Empty;
+        var authorization = Request.Headers.Authorization.ToString();
+
+        var result = await _staffAccountService.CreateAsync(request, managerId, authorization, cancellationToken);
+        if (result.IsSuccess)
+            return CreatedAtAction(nameof(GetAll), ToResponse(result.Value!));
+
+        return result.Error switch
+        {
+            ServiceError.DuplicateIdentifier => Conflict(new ProblemDetails
+            {
+                Status = 409,
+                Title = "Duplicate identifier.",
+                Detail = "The username, email or technician link is already in use."
+            }),
+            ServiceError.TechnicianRequired => BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "Technician link required.",
+                Detail = "A Dispatch technician UUID is required when creating a Technician account."
+            }),
+            ServiceError.TechnicianNotFound => BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "Technician not found.",
+                Detail = "The specified Dispatch technician does not exist."
+            }),
+            ServiceError.DispatchUnavailable => Problem(
+                statusCode: 503,
+                title: "Dispatch service unavailable.",
+                detail: "Could not verify the technician with the Dispatch service. Try again later."),
+            ServiceError.ValidationFailed => BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "Validation failed.",
+                Detail = "Check that the role is Agent, Dispatcher, Technician or Manager."
+            }),
+            _ => Problem(statusCode: 500, title: "An unexpected error occurred.")
+        };
+    }
+}

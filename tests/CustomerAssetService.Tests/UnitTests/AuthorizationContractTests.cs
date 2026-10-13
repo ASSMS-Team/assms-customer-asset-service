@@ -40,4 +40,12 @@ public sealed class AuthorizationContractTests
         var attribute = Assert.Single(method.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
         Assert.Equal(StaffRoles.CustomerEditors, attribute.Roles);
     }
+
+    [Fact]
+    public void StaffAccountProvisioningRequiresManagerOnly()
+    {
+        var attribute = Assert.Single(typeof(StaffAccountsController).GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
+        Assert.Equal("Manager", attribute.Roles);
+        Assert.Empty(typeof(StaffAccountsController).GetCustomAttributes(typeof(AllowAnonymousAttribute), true));
+    }
 }

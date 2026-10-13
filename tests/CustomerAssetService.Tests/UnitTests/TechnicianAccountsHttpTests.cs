@@ -62,7 +62,7 @@ public sealed class TechnicianAccountsHttpTests
     public async Task LinksExistingAccountWithoutChangingItsPasswordOrStaffId()
     {
         await using var factory = new Factory(); using var client = factory.CreateClient();
-        var account = new StaffAccount { Id = Guid.NewGuid().ToString(), Username = "existing.login", Email = "existing@example.com", PasswordHash = new PasswordHasher().Hash("ExistingPassword42!"), Role = "Technician", Status = "ACTIVE" };
+        var account = new StaffAccount { Id = Guid.NewGuid().ToString(), FullName = "Existing Login", Username = "existing.login", Email = "existing@example.com", PasswordHash = new PasswordHasher().Hash("ExistingPassword42!"), Role = "Technician", Status = "ACTIVE" };
         factory.Repo.Accounts.Add(account);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token("Manager"));
         var id = Guid.NewGuid();
@@ -95,7 +95,7 @@ public sealed class TechnicianAccountsHttpTests
                 services.AddSingleton<IDispatchTechnicianVerifier>(new Verifier());
             });
         }
-        public string Token(string role) => Services.GetRequiredService<ITokenService>().Issue(new StaffAccount { Id = Guid.NewGuid().ToString(), Username = "operator", Email = "operator@example.com", PasswordHash = "unused", Role = role, Status = "ACTIVE" }).AccessToken;
+        public string Token(string role) => Services.GetRequiredService<ITokenService>().Issue(new StaffAccount { Id = Guid.NewGuid().ToString(), FullName = "Operator", Username = "operator", Email = "operator@example.com", PasswordHash = "unused", Role = role, Status = "ACTIVE" }).AccessToken;
     }
     private sealed class Verifier : IDispatchTechnicianVerifier
     {
@@ -106,12 +106,14 @@ public sealed class TechnicianAccountsHttpTests
         public List<StaffAccount> Accounts { get; } = [];
         public Task<bool> AnyManagerAsync() => Task.FromResult(true);
         public Task<StaffAccount?> FindByIdentifierAsync(string identifier) => Task.FromResult(Accounts.FirstOrDefault(a => a.Username.Equals(identifier.Trim(), StringComparison.OrdinalIgnoreCase) || a.Email.Equals(identifier.Trim(), StringComparison.OrdinalIgnoreCase)));
+        public Task<StaffAccount?> FindByIdAsync(string id) => Task.FromResult(Accounts.FirstOrDefault(a => a.Id == id));
         public Task<StaffAccount?> FindByTechnicianIdAsync(string id) => Task.FromResult(Accounts.FirstOrDefault(a => a.TechnicianId == id));
         public Task CreateAsync(StaffAccount account) { Accounts.Add(account); return Task.CompletedTask; }
+        public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() => Task.FromResult<IReadOnlyList<StaffAccount>>(Accounts.Where(a => a.Status == "ACTIVE").ToList());
         public Task<bool> LinkTechnicianAsync(string accountId, string id)
         {
             var index = Accounts.FindIndex(a => a.Id == accountId); var a = Accounts[index];
-            Accounts[index] = new StaffAccount { Id = a.Id, Username = a.Username, Email = a.Email, PasswordHash = a.PasswordHash, Role = a.Role, Status = a.Status, TechnicianId = id };
+            Accounts[index] = new StaffAccount { Id = a.Id, FullName = a.FullName, Username = a.Username, Email = a.Email, PasswordHash = a.PasswordHash, Role = a.Role, Status = a.Status, TechnicianId = id };
             return Task.FromResult(true);
         }
     }

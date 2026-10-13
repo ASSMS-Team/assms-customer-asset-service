@@ -5,6 +5,9 @@ namespace CustomerAssetService.Repositories;
 public interface IStaffAccountRepository
 {
     Task<StaffAccount?> FindByIdentifierAsync(string identifier);
+    Task<StaffAccount?> FindByIdAsync(string id);
     Task<bool> AnyManagerAsync();
     Task CreateAsync(StaffAccount account);
+    Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync();
 }
+

@@ -17,7 +17,17 @@ public enum ServiceError
     // The asset this operation acts on is not ACTIVE. Kept separate from
     // CustomerInactive rather than folded into a general "inactive": the two
     // name different resources, and the controller's message has to say which.
-    AssetInactive = 6
+    AssetInactive = 6,
+    // Staff account creation: the username, email or technician is already linked.
+    DuplicateIdentifier = 7,
+    // A required field failed validation (e.g. unsupported role).
+    ValidationFailed = 8,
+    // Technician role requires a linked Dispatch technician UUID.
+    TechnicianRequired = 9,
+    // The referenced Dispatch technician was not found.
+    TechnicianNotFound = 10,
+    // Could not reach the Dispatch service to verify the technician.
+    DispatchUnavailable = 11
 }
 
 // Expected failures are returned, not thrown, so the controller's branching is

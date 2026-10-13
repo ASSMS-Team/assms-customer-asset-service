@@ -11,7 +11,7 @@ public sealed class TechnicianAccountServiceTests
     private const string TechId = "783a9fae-a2da-4acb-906a-74cbfa5fbc6e";
     private static StaffAccount Account(string role = "Technician", string? linkedId = null, string status = "ACTIVE") => new()
     {
-        Id = "staff-id", Username = "different.username", Email = "tech@example.com",
+        Id = "staff-id", FullName = "Test Account", Username = "different.username", Email = "tech@example.com",
         PasswordHash = "existing-password-hash", Role = role, Status = status, TechnicianId = linkedId
     };
     private static CreateTechnicianAccountRequest Request() => new() { Username = "tech.login", Email = "login@example.com", Password = "ExamplePassword!42" };
@@ -84,13 +84,15 @@ public sealed class TechnicianAccountServiceTests
     {
         public StaffAccount? Account; public int Creates; public int Links;
         public Task<StaffAccount?> FindByIdentifierAsync(string identifier) => Task.FromResult(Account);
+        public Task<StaffAccount?> FindByIdAsync(string id) => Task.FromResult(Account?.Id == id ? Account : null);
         public Task<StaffAccount?> FindByTechnicianIdAsync(string id) => Task.FromResult(Account?.TechnicianId == id ? Account : null);
         public Task<bool> AnyManagerAsync() => Task.FromResult(true);
         public Task CreateAsync(StaffAccount account) { Account = account; Creates++; return Task.CompletedTask; }
+        public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() => Task.FromResult<IReadOnlyList<StaffAccount>>(Account is null ? [] : [Account]);
         public Task<bool> LinkTechnicianAsync(string accountId, string id)
         {
             Links++;
-            Account = new StaffAccount { Id = Account!.Id, Username = Account.Username, Email = Account.Email, PasswordHash = Account.PasswordHash, Role = Account.Role, Status = Account.Status, TechnicianId = id };
+            Account = new StaffAccount { Id = Account!.Id, FullName = Account.FullName, Username = Account.Username, Email = Account.Email, PasswordHash = Account.PasswordHash, Role = Account.Role, Status = Account.Status, TechnicianId = id };
             return Task.FromResult(true);
         }
     }

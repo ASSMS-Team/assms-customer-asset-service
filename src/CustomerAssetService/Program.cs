@@ -52,6 +52,7 @@ builder.Services.AddHttpClient<IDispatchTechnicianVerifier, DispatchTechnicianVe
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<AuthenticationService>();
+builder.Services.AddScoped<StaffAccountService>();
 builder.Services.AddScoped<BootstrapManagerSeeder>();
 builder.Services.AddScoped<StaffAccountMigrationRunner>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();

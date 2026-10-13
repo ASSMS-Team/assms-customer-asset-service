@@ -12,6 +12,7 @@ public sealed class StaffAccountMigrationRunner
     {
         await ApplyMigrationAsync("V04__create_staff_accounts.sql");
         await ApplyMigrationAsync("V05__link_technician_accounts.sql");
+        await ApplyMigrationAsync("V06__add_staff_audit_columns.sql");
     }
 
     private async Task ApplyMigrationAsync(string migrationName)
@@ -57,6 +58,24 @@ public sealed class StaffAccountMigrationRunner
             {
                 await using var add = connection.CreateCommand();
                 add.CommandText = "ALTER TABLE staff_accounts ADD UNIQUE KEY uq_staff_accounts_technician (technician_id);";
+                await add.ExecuteNonQueryAsync();
+            }
+        }
+        else if (migrationName == "V06__add_staff_audit_columns.sql")
+        {
+            await using var exists = connection.CreateCommand();
+            exists.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'staff_accounts' AND column_name = 'full_name';";
+            if (Convert.ToInt32(await exists.ExecuteScalarAsync()) == 0)
+            {
+                await using var add = connection.CreateCommand();
+                add.CommandText = "ALTER TABLE staff_accounts ADD COLUMN full_name VARCHAR(200) NOT NULL DEFAULT '';";
+                await add.ExecuteNonQueryAsync();
+            }
+            exists.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'staff_accounts' AND column_name = 'created_by';";
+            if (Convert.ToInt32(await exists.ExecuteScalarAsync()) == 0)
+            {
+                await using var add = connection.CreateCommand();
+                add.CommandText = "ALTER TABLE staff_accounts ADD COLUMN created_by CHAR(36) NULL;";
                 await add.ExecuteNonQueryAsync();
             }
         }
