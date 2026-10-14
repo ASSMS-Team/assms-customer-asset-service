@@ -73,6 +73,22 @@ public sealed class TechnicianAccountsHttpTests
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/auth/technician-accounts/{Guid.NewGuid()}/link", new LinkTechnicianAccountRequest { Identifier = account.Username })).StatusCode);
     }
 
+    [Fact]
+    public async Task DeactivatedOperatorCannotProvisionTechnicianUsingExistingToken()
+    {
+        await using var factory = new Factory(); using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.Token("Manager"));
+        var request = new CreateTechnicianAccountRequest { Username = "active.provision", Email = "active@example.com", Password = "ExamplePassword42!" };
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync($"/api/auth/technician-accounts/{Guid.NewGuid()}", request)).StatusCode);
+
+        Assert.Single(factory.Repo.Operators).Status = "INACTIVE";
+
+        var rejected = await client.PostAsJsonAsync($"/api/auth/technician-accounts/{Guid.NewGuid()}",
+            new CreateTechnicianAccountRequest { Username = "blocked.provision", Email = "blocked@example.com", Password = "ExamplePassword42!" });
+        Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        Assert.Single(factory.Repo.Accounts);
+    }
+
     private sealed class Factory : WebApplicationFactory<Program>
     {
         public Repository Repo { get; } = new();
@@ -95,7 +111,12 @@ public sealed class TechnicianAccountsHttpTests
                 services.AddSingleton<IDispatchTechnicianVerifier>(new Verifier());
             });
         }
-        public string Token(string role) => Services.GetRequiredService<ITokenService>().Issue(new StaffAccount { Id = Guid.NewGuid().ToString(), FullName = "Operator", Username = "operator", Email = "operator@example.com", PasswordHash = "unused", Role = role, Status = "ACTIVE" }).AccessToken;
+        public string Token(string role)
+        {
+            var account = new StaffAccount { Id = Guid.NewGuid().ToString(), FullName = "Operator", Username = "operator", Email = "operator@example.com", PasswordHash = "unused", Role = role, Status = "ACTIVE" };
+            Repo.Operators.Add(account);
+            return Services.GetRequiredService<ITokenService>().Issue(account).AccessToken;
+        }
     }
     private sealed class Verifier : IDispatchTechnicianVerifier
     {
@@ -104,9 +125,12 @@ public sealed class TechnicianAccountsHttpTests
     private sealed class Repository : ITechnicianAccountRepository
     {
         public List<StaffAccount> Accounts { get; } = [];
+        // Keep authenticated operators separate from accounts provisioned by
+        // each test, while allowing the production token validator to find them.
+        public List<StaffAccount> Operators { get; } = [];
         public Task<bool> AnyManagerAsync() => Task.FromResult(true);
         public Task<StaffAccount?> FindByIdentifierAsync(string identifier) => Task.FromResult(Accounts.FirstOrDefault(a => a.Username.Equals(identifier.Trim(), StringComparison.OrdinalIgnoreCase) || a.Email.Equals(identifier.Trim(), StringComparison.OrdinalIgnoreCase)));
-        public Task<StaffAccount?> FindByIdAsync(string id) => Task.FromResult(Accounts.FirstOrDefault(a => a.Id == id));
+        public Task<StaffAccount?> FindByIdAsync(string id) => Task.FromResult(Accounts.Concat(Operators).FirstOrDefault(a => a.Id == id));
         public Task<StaffAccount?> FindByTechnicianIdAsync(string id) => Task.FromResult(Accounts.FirstOrDefault(a => a.TechnicianId == id));
         public Task CreateAsync(StaffAccount account) { Accounts.Add(account); return Task.CompletedTask; }
         public Task<IReadOnlyList<StaffAccount>> GetAllActiveAsync() => Task.FromResult<IReadOnlyList<StaffAccount>>(Accounts.Where(a => a.Status == "ACTIVE").ToList());
