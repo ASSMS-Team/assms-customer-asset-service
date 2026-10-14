@@ -21,7 +21,8 @@ public sealed class StaffAccountsController : ControllerBase
     private static StaffAccountResponse ToResponse(StaffAccount account) =>
         new(account.Id, account.FullName, account.Username, account.Email,
             account.Role, account.Status, account.TechnicianId,
-            account.CreatedAt, account.CreatedBy);
+            account.CreatedAt, account.CreatedBy,
+            account.DispatchSyncStatus);
 
     /// <summary>Returns registered staff accounts with optional status filter. Passwords and hashes are never returned.</summary>
     /// <response code="200">A list of registered staff accounts.</response>
@@ -110,12 +111,20 @@ public sealed class StaffAccountsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Deactivate(string id)
+    public async Task<IActionResult> Deactivate(string id, CancellationToken cancellationToken = default)
     {
         var managerId = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? string.Empty;
-        var result = await _staffAccountService.DeactivateAsync(id, managerId);
+        var authorization = Request.Headers.Authorization.ToString();
+        var result = await _staffAccountService.DeactivateAsync(id, managerId, authorization, cancellationToken);
         if (result.IsSuccess)
-            return Ok(ToResponse(result.Value!));
+        {
+            var response = ToResponse(result.Value!);
+            if (response.DispatchSyncStatus == "PENDING_RETRY")
+            {
+                Response.Headers["X-Dispatch-Sync-Status"] = "PENDING_RETRY";
+            }
+            return Ok(response);
+        }
 
         return result.Error switch
         {
@@ -136,6 +145,12 @@ public sealed class StaffAccountsController : ControllerBase
                 Status = 409,
                 Title = "Last active Manager safeguard.",
                 Detail = "Cannot deactivate the last active Manager account. At least one active Manager must remain."
+            }),
+            ServiceError.TechnicianHasOpenAssignments => Conflict(new ProblemDetails
+            {
+                Status = 409,
+                Title = "Technician has open assignments.",
+                Detail = "Reassign or close the technician's open jobs before deactivation."
             }),
             _ => Problem(statusCode: 500, title: "An unexpected error occurred.")
         };

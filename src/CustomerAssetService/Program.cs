@@ -89,6 +89,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             NameClaimType = JwtRegisteredClaimNames.UniqueName,
             RoleClaimType = "role"
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = StaffAccountTokenValidator.ValidateTokenAccountActiveAsync
+        };
     });
 builder.Services.AddAuthentication()
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, InternalServiceKeyAuthenticationHandler>(

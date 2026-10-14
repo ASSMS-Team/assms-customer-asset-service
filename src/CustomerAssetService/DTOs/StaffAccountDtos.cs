@@ -35,4 +35,5 @@ public sealed record StaffAccountResponse(
     string Status,
     string? TechnicianId,
     DateTime CreatedAt,
-    string? CreatedBy);
+    string? CreatedBy,
+    string? DispatchSyncStatus = null);

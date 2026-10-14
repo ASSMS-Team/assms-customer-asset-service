@@ -8,6 +8,16 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
 
     public StaffAccountRepository(IDbConnectionFactory connectionFactory) => _connectionFactory = connectionFactory;
 
+    private static string? GetOptionalString(System.Data.Common.DbDataReader reader, string column)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (reader.GetName(i).Equals(column, StringComparison.OrdinalIgnoreCase))
+                return reader.IsDBNull(i) ? null : reader.GetString(i);
+        }
+        return null;
+    }
+
     private static StaffAccount Map(System.Data.Common.DbDataReader reader) => new()
     {
         Id = reader.GetValue(reader.GetOrdinal("id"))?.ToString() ?? string.Empty,
@@ -25,16 +35,49 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
             ? null : reader.GetValue(reader.GetOrdinal("technician_id")).ToString(),
         CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at")),
         CreatedBy = reader.IsDBNull(reader.GetOrdinal("created_by"))
-            ? null : reader.GetValue(reader.GetOrdinal("created_by")).ToString()
+            ? null : reader.GetValue(reader.GetOrdinal("created_by")).ToString(),
+        DispatchSyncStatus = GetOptionalString(reader, "dispatch_sync_status")
     };
 
     private const string SelectColumns =
-        "id, full_name, username, email, password_hash, role, status, technician_id, created_at, created_by";
+        "id, full_name, username, email, password_hash, role, status, technician_id, created_at, created_by, dispatch_sync_status";
+
+    private static volatile bool _syncColumnChecked;
+    private static readonly SemaphoreSlim _syncColumnLock = new(1, 1);
+
+    private async Task EnsureSyncColumnAsync(System.Data.Common.DbConnection connection)
+    {
+        if (_syncColumnChecked) return;
+        await _syncColumnLock.WaitAsync();
+        try
+        {
+            if (_syncColumnChecked) return;
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'staff_accounts' AND column_name = 'dispatch_sync_status';";
+            var count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            if (count == 0)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = "ALTER TABLE staff_accounts ADD COLUMN dispatch_sync_status VARCHAR(50) NULL;";
+                await alter.ExecuteNonQueryAsync();
+            }
+            _syncColumnChecked = true;
+        }
+        catch
+        {
+            _syncColumnChecked = true;
+        }
+        finally
+        {
+            _syncColumnLock.Release();
+        }
+    }
 
     public async Task<StaffAccount?> FindByIdentifierAsync(string identifier)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
+        await EnsureSyncColumnAsync(connection);
         await using var command = connection.CreateCommand();
         command.CommandText = $@"
             SELECT {SelectColumns}
@@ -50,6 +93,7 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
+        await EnsureSyncColumnAsync(connection);
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT {SelectColumns} FROM staff_accounts WHERE id = @id LIMIT 1;";
         command.Parameters.AddWithValue("@id", id);
@@ -75,14 +119,117 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
         return Convert.ToInt32(await command.ExecuteScalarAsync());
     }
 
-    public async Task<bool> DeactivateAsync(string id)
+    public Task<DeactivateStaffAccountResult> DeactivateAsync(string id) => DeactivateAsync(id, null);
+
+    public async Task<DeactivateStaffAccountResult> DeactivateAsync(string id, string? dispatchSyncStatus)
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
+        await EnsureSyncColumnAsync(connection);
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+
+        try
+        {
+            await using var findCmd = connection.CreateCommand();
+            findCmd.Transaction = transaction;
+            findCmd.CommandText = "SELECT role, status FROM staff_accounts WHERE id = @id LIMIT 1;";
+            findCmd.Parameters.AddWithValue("@id", id);
+
+            string? role = null;
+            string? status = null;
+            await using (var reader = await findCmd.ExecuteReaderAsync())
+            {
+                if (!await reader.ReadAsync())
+                    return DeactivateStaffAccountResult.NotFound;
+
+                role = reader.GetString(reader.GetOrdinal("role"));
+                status = reader.GetString(reader.GetOrdinal("status"));
+            }
+
+            if (string.Equals(status, "INACTIVE", StringComparison.OrdinalIgnoreCase))
+            {
+                if (dispatchSyncStatus != null)
+                {
+                    await using var syncCmd = connection.CreateCommand();
+                    syncCmd.Transaction = transaction;
+                    syncCmd.CommandText = "UPDATE staff_accounts SET dispatch_sync_status = @syncStatus WHERE id = @id;";
+                    syncCmd.Parameters.AddWithValue("@syncStatus", dispatchSyncStatus);
+                    syncCmd.Parameters.AddWithValue("@id", id);
+                    await syncCmd.ExecuteNonQueryAsync();
+                    await transaction.CommitAsync();
+                }
+                return DeactivateStaffAccountResult.Success;
+            }
+
+            if (string.Equals(role, "Manager", StringComparison.OrdinalIgnoreCase))
+            {
+                // Lock all active manager rows using FOR UPDATE to prevent race conditions during concurrent deactivations
+                await using var countCmd = connection.CreateCommand();
+                countCmd.Transaction = transaction;
+                countCmd.CommandText = "SELECT id FROM staff_accounts WHERE role = 'Manager' AND status = 'ACTIVE' FOR UPDATE;";
+
+                var activeManagerIds = new List<string>();
+                await using (var reader = await countCmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var mId = reader.GetValue(0)?.ToString();
+                        if (!string.IsNullOrEmpty(mId))
+                            activeManagerIds.Add(mId);
+                    }
+                }
+
+                if (!activeManagerIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+                {
+                    return DeactivateStaffAccountResult.Success;
+                }
+
+                if (activeManagerIds.Count <= 1)
+                {
+                    await transaction.RollbackAsync();
+                    return DeactivateStaffAccountResult.LastActiveManager;
+                }
+            }
+
+            await using var updateCmd = connection.CreateCommand();
+            updateCmd.Transaction = transaction;
+            if (dispatchSyncStatus != null)
+            {
+                updateCmd.CommandText = "UPDATE staff_accounts SET status = 'INACTIVE', dispatch_sync_status = @syncStatus WHERE id = @id;";
+                updateCmd.Parameters.AddWithValue("@syncStatus", dispatchSyncStatus);
+            }
+            else
+            {
+                updateCmd.CommandText = "UPDATE staff_accounts SET status = 'INACTIVE' WHERE id = @id;";
+            }
+            updateCmd.Parameters.AddWithValue("@id", id);
+            var affected = await updateCmd.ExecuteNonQueryAsync();
+
+            await transaction.CommitAsync();
+            return affected > 0 ? DeactivateStaffAccountResult.Success : DeactivateStaffAccountResult.NotFound;
+        }
+        catch (MySqlConnector.MySqlException ex) when (ex.Number == 1213)
+        {
+            await transaction.RollbackAsync();
+            return await DeactivateAsync(id, dispatchSyncStatus);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task UpdateDispatchSyncStatusAsync(string id, string status)
+    {
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync();
+        await EnsureSyncColumnAsync(connection);
         await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE staff_accounts SET status = 'INACTIVE' WHERE id = @id;";
+        command.CommandText = "UPDATE staff_accounts SET dispatch_sync_status = @status WHERE id = @id;";
+        command.Parameters.AddWithValue("@status", status);
         command.Parameters.AddWithValue("@id", id);
-        return await command.ExecuteNonQueryAsync() > 0;
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task CreateAsync(StaffAccount account)
@@ -115,6 +262,7 @@ public sealed class StaffAccountRepository : ITechnicianAccountRepository
     {
         await using var connection = _connectionFactory.CreateConnection();
         await connection.OpenAsync();
+        await EnsureSyncColumnAsync(connection);
         await using var command = connection.CreateCommand();
         if (string.IsNullOrWhiteSpace(status))
         {

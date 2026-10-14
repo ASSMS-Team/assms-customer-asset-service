@@ -31,7 +31,9 @@ public enum ServiceError
     // Self-deactivation safeguard: A Manager cannot deactivate their own currently authenticated account.
     SelfDeactivationNotAllowed = 12,
     // Last-Manager safeguard: The system must not allow deactivation of the last active Manager account.
-    LastActiveManager = 13
+    LastActiveManager = 13,
+    // Open assignments safeguard: A linked technician with open jobs cannot be deactivated until jobs are closed or reassigned.
+    TechnicianHasOpenAssignments = 14
 }
 
 // Expected failures are returned, not thrown, so the controller's branching is

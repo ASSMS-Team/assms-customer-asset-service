@@ -98,7 +98,8 @@ public sealed class StaffAccountService
     public async Task<StaffAccount?> GetByIdAsync(string id) =>
         await _repository.FindByIdAsync(id);
 
-    public async Task<Result<StaffAccount>> DeactivateAsync(string accountId, string currentManagerId)
+    public async Task<Result<StaffAccount>> DeactivateAsync(
+        string accountId, string currentManagerId, string? authorization = null, CancellationToken cancellationToken = default)
     {
         var account = await _repository.FindByIdAsync(accountId);
         if (account is null)
@@ -108,9 +109,55 @@ public sealed class StaffAccountService
         if (string.Equals(account.Id, currentManagerId, StringComparison.OrdinalIgnoreCase))
             return Result<StaffAccount>.Failure(ServiceError.SelfDeactivationNotAllowed);
 
-        // Repeated request safety: Already inactive is handled idempotently without side effects
+        // Repeated request safety for non-technicians or already synchronized technicians
         if (string.Equals(account.Status, "INACTIVE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (account.Role != StaffRoles.Technician || string.IsNullOrEmpty(account.TechnicianId) ||
+                string.Equals(account.DispatchSyncStatus, "SYNCHRONIZED", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<StaffAccount>.Success(account);
+            }
+        }
+
+        // Technician-Dispatch synchronization safeguard
+        string? syncStatus = null;
+        if (string.Equals(account.Role, StaffRoles.Technician, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(account.TechnicianId))
+        {
+            var outcome = await _verifier.DeactivateTechnicianAsync(
+                account.TechnicianId.Trim(), authorization ?? string.Empty, cancellationToken);
+
+            if (outcome == DispatchDeactivationOutcome.HasOpenAssignments)
+            {
+                // Open work blocks deactivation to preserve existing assignments and history
+                return Result<StaffAccount>.Failure(ServiceError.TechnicianHasOpenAssignments);
+            }
+
+            if (outcome == DispatchDeactivationOutcome.Success)
+            {
+                syncStatus = "SYNCHRONIZED";
+            }
+            else if (outcome == DispatchDeactivationOutcome.Unavailable)
+            {
+                // Dispatch outage: revoke staff login access immediately, but expose pending synchronization state with safe retry
+                syncStatus = "PENDING_RETRY";
+            }
+            else
+            {
+                syncStatus = "SYNCHRONIZED";
+            }
+        }
+
+        // If account was already inactive (recovery retry flow when Dispatch is restored):
+        if (string.Equals(account.Status, "INACTIVE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (syncStatus != null && syncStatus != account.DispatchSyncStatus)
+            {
+                account.DispatchSyncStatus = syncStatus;
+                await _repository.UpdateDispatchSyncStatusAsync(accountId, syncStatus);
+            }
             return Result<StaffAccount>.Success(account);
+        }
 
         // Last-Manager safeguard: The system must not allow deactivation of the last active Manager account
         if (string.Equals(account.Role, StaffRoles.Manager, StringComparison.OrdinalIgnoreCase))
@@ -120,11 +167,15 @@ public sealed class StaffAccountService
                 return Result<StaffAccount>.Failure(ServiceError.LastActiveManager);
         }
 
-        var updated = await _repository.DeactivateAsync(accountId);
-        if (!updated)
+        var deactivationResult = await _repository.DeactivateAsync(accountId, syncStatus);
+        if (deactivationResult == DeactivateStaffAccountResult.NotFound)
             return Result<StaffAccount>.Failure(ServiceError.NotFound);
 
+        if (deactivationResult == DeactivateStaffAccountResult.LastActiveManager)
+            return Result<StaffAccount>.Failure(ServiceError.LastActiveManager);
+
         account.Status = "INACTIVE";
+        account.DispatchSyncStatus = syncStatus;
         return Result<StaffAccount>.Success(account);
     }
 }
