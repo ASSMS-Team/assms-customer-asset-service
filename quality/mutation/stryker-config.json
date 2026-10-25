@@ -1,0 +1,27 @@
+{
+  "stryker-config": {
+    "solution": "CustomerAssetService.sln",
+    "project": "CustomerAssetService.csproj",
+    "test-projects": [
+      "tests/CustomerAssetService.Tests/CustomerAssetService.Tests.csproj"
+    ],
+    "reporters": [ "html", "json", "progress", "cleartext" ],
+    "coverage-analysis": "perTest",
+    "mutation-level": "Standard",
+    "thresholds": { "high": 80, "low": 60, "break": 0 },
+    "mutate": [
+      "**/*.cs",
+      "!**/Program.cs",
+      "!**/Services/StaffAccountMigrationRunner.cs",
+      "!**/Repositories/AssetRepository.cs",
+      "!**/Repositories/CustomerRepository.cs",
+      "!**/Repositories/StaffAccountRepository.cs",
+      "!**/Repositories/MySqlConnectionFactory.cs",
+      "!**/Security/AuthorizeOperationFilter.cs",
+      "!**/Controllers/HealthController.cs"
+    ],
+    "ignore-methods": [
+      "*.LogTrace", "*.LogDebug", "*.LogInformation", "*.LogWarning", "*.LogError", "*.LogCritical"
+    ]
+  }
+}
